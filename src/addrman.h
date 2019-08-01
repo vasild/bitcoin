@@ -170,6 +170,8 @@ public:
 //! the maximum time we'll spend trying to resolve a tried table collision, in seconds
 static const int64_t ADDRMAN_TEST_WINDOW = 40*60; // 40 minutes
 
+#define ADDRMAN_HIGHEST_KNOWN_SERIALIZATION_VERSION 3
+
 /**
  * Stochastical (IP) address manager
  */
@@ -211,6 +213,7 @@ private:
     //! Holds addrs inserted into tried table that collide with existing entries. Test-before-evict discipline used to resolve these collisions.
     std::set<int> m_tried_collisions;
 
+    unsigned char m_serialization_version;
 protected:
     //! secret key to randomize bucket select with
     uint256 nKey;
@@ -324,7 +327,10 @@ public:
     {
         LOCK(cs);
 
-        unsigned char nVersion = 2;
+        unsigned char nVersion = ADDRMAN_HIGHEST_KNOWN_SERIALIZATION_VERSION;
+        if (nVersion >= 3) {
+            s.SetVersion(s.GetVersion() | SERIALIZE_ADDR_AS_V2);
+        }
         s << nVersion;
         s << ((unsigned char)32);
         s << nKey;
@@ -384,6 +390,9 @@ public:
         Clear();
         unsigned char nVersion;
         s >> nVersion;
+        if (nVersion >= 3) {
+            s.SetVersion(s.GetVersion() | SERIALIZE_ADDR_AS_V2);
+        }
         unsigned char nKeySize;
         s >> nKeySize;
         if (nKeySize != 32) throw std::ios_base::failure("Incorrect keysize in addrman deserialization");
@@ -463,7 +472,7 @@ public:
             CAddrInfo &info = mapInfo[n];
             int bucket = entryToBucket[n];
             int nUBucketPos = info.GetBucketPosition(nKey, true, bucket);
-            if (nVersion == 2 && nUBuckets == ADDRMAN_NEW_BUCKET_COUNT && vvNew[bucket][nUBucketPos] == -1 &&
+            if (nVersion >= 2 && nUBuckets == ADDRMAN_NEW_BUCKET_COUNT && vvNew[bucket][nUBucketPos] == -1 &&
                 info.nRefCount < ADDRMAN_NEW_BUCKETS_PER_ADDRESS && serialized_asmap_version == supplied_asmap_version) {
                 // Bucketing has not changed, using existing bucket positions for the new table
                 vvNew[bucket][nUBucketPos] = n;
@@ -523,7 +532,8 @@ public:
         mapAddr.clear();
     }
 
-    CAddrMan()
+    CAddrMan(unsigned char serialization_version = ADDRMAN_HIGHEST_KNOWN_SERIALIZATION_VERSION)
+        : m_serialization_version(serialization_version)
     {
         Clear();
     }
