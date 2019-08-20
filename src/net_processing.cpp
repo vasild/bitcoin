@@ -392,6 +392,9 @@ struct CNodeState {
     //! Whether this peer is a manual connection
     bool m_is_manual_connection;
 
+    //! Whether this peer accepts addrv2 messages
+    bool m_accepts_addrv2{false};
+
     CNodeState(CAddress addrIn, std::string addrNameIn, bool is_inbound, bool is_manual) :
         address(addrIn), name(std::move(addrNameIn)), m_is_inbound(is_inbound),
         m_is_manual_connection (is_manual)
@@ -2175,6 +2178,10 @@ bool ProcessMessage(CNode* pfrom, const std::string& msg_type, CDataStream& vRec
                       pfrom->m_tx_relay == nullptr ? "block-relay" : "full-relay");
         }
 
+        // Signal support for receiving addrv2 as soon as we're considered
+        // connected
+        connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::SENDADDRv2));
+
         if (pfrom->nVersion >= SENDHEADERS_VERSION) {
             // Tell our peer we prefer to receive headers rather than inv's
             // We send this to non-NODE NETWORK peers as well, because even
@@ -2206,9 +2213,18 @@ bool ProcessMessage(CNode* pfrom, const std::string& msg_type, CDataStream& vRec
         return false;
     }
 
-    if (msg_type == NetMsgType::ADDR) {
+    if (msg_type == NetMsgType::ADDR || msg_type == NetMsgType::ADDRv2) {
+        if (msg_type == NetMsgType::ADDRv2) {
+            vRecv.SetVersion(vRecv.GetVersion() | SERIALIZE_ADDR_AS_V2);
+        }
         std::vector<CAddress> vAddr;
-        vRecv >> vAddr;
+        try {
+            vRecv >> vAddr;
+        } catch (...) {
+            LOCK(cs_main);
+            Misbehaving(pfrom->GetId(), 20, "absurdly large addrv2 entry");
+            return false;
+        }
 
         // Don't want addr from older versions unless seeding
         if (pfrom->nVersion < CADDR_TIME_VERSION && connman->GetAddressCount() > 1000)
@@ -2263,6 +2279,12 @@ bool ProcessMessage(CNode* pfrom, const std::string& msg_type, CDataStream& vRec
     if (msg_type == NetMsgType::SENDHEADERS) {
         LOCK(cs_main);
         State(pfrom->GetId())->fPreferHeaders = true;
+        return true;
+    }
+
+    if (msg_type == NetMsgType::SENDADDRv2) {
+        LOCK(cs_main);
+        State(pfrom->GetId())->m_accepts_addrv2 = true;
         return true;
     }
 
@@ -3659,14 +3681,24 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     // receiver rejects addr messages larger than 1000
                     if (vAddr.size() >= 1000)
                     {
-                        connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                        if (state.m_accepts_addrv2) {
+                            connman->PushMessage(pto, msgMaker.Make(SERIALIZE_ADDR_AS_V2, NetMsgType::ADDRv2, vAddr));
+                        } else {
+                            connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                        }
+
                         vAddr.clear();
                     }
                 }
             }
             pto->vAddrToSend.clear();
-            if (!vAddr.empty())
-                connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+            if (!vAddr.empty()) {
+                if (state.m_accepts_addrv2) {
+                    connman->PushMessage(pto, msgMaker.Make(SERIALIZE_ADDR_AS_V2, NetMsgType::ADDRv2, vAddr));
+                } else {
+                    connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                }
+            }
             // we only send the big addr message once
             if (pto->vAddrToSend.capacity() > 40)
                 pto->vAddrToSend.shrink_to_fit();
