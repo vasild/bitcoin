@@ -413,7 +413,7 @@ BOOST_AUTO_TEST_CASE(netbase_dont_resolve_strings_with_embedded_nul_characters)
     BOOST_CHECK(!LookupSubNet(std::string("1.2.3.0/24\0", 11), ret));
     BOOST_CHECK(!LookupSubNet(std::string("1.2.3.0/24\0example.com", 22), ret));
     BOOST_CHECK(!LookupSubNet(std::string("1.2.3.0/24\0example.com\0", 23), ret));
-    BOOST_CHECK(LookupSubNet(std::string("5wyqrzbvrdsumnok.onion", 22), ret));
+    BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion", 22), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0", 23), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0example.com", 34), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0example.com\0", 35), ret));
