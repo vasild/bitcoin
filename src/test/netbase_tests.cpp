@@ -4,8 +4,12 @@
 
 #include <net_permissions.h>
 #include <netbase.h>
+#include <protocol.h>
+#include <serialize.h>
+#include <streams.h>
 #include <test/util/setup_common.h>
 #include <util/strencodings.h>
+#include <version.h>
 
 #include <string>
 
@@ -429,6 +433,53 @@ BOOST_AUTO_TEST_CASE(netbase_dont_resolve_strings_with_embedded_nul_characters)
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0", 23), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0example.com", 34), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0example.com\0", 35), ret));
+}
+
+BOOST_AUTO_TEST_CASE(caddress_serialization)
+{
+    std::vector<CNetAddr> net_addrs(3);
+    // 0x1a.0x2a.0x3a.0x4a (4 bytes)
+    BOOST_CHECK(LookupHost("26.42.58.74", net_addrs[0], false));
+    BOOST_CHECK(LookupHost("1a1b:2a2b:3a3b:4a4b:5a5b:6a6b:7a7b:8a8b", net_addrs[1], false));
+    // 0xf1f2f3f4f5f6f7f8f9fa (10 bytes)
+    BOOST_CHECK(LookupHost("6hzph5hv6337r6p2.onion", net_addrs[2], false));
+
+    std::vector<CAddress> addresses;
+    for (const auto& net_addr : net_addrs) {
+        addresses.emplace_back(CAddress(CService(net_addr, 0x7071 /* port */),
+            ServiceFlags(NODE_NETWORK | NODE_WITNESS)));
+        addresses.back().nTime = 0x5eb31bdaU;
+    }
+
+    // Serialize in ADDR format (pre-BIP155).
+
+    CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+
+    s << addresses;
+    // clang-format off
+    BOOST_CHECK_EQUAL(HexStr(s),
+        "03" // 3 entries
+        // time    service flags      fixed 16 byte address              port
+        "da1bb35e" "0900000000000000" "00000000000000000000ffff1a2a3a4a" "7071"
+        "da1bb35e" "0900000000000000" "1a1b2a2b3a3b4a4b5a5b6a6b7a7b8a8b" "7071"
+        "da1bb35e" "0900000000000000" "fd87d87eeb43f1f2f3f4f5f6f7f8f9fa" "7071");
+    // clang-format on
+    s.clear();
+
+    // Serialize in ADDRv2 format (BIP155).
+
+    s.SetVersion(s.GetVersion() | ADDRv2_FORMAT);
+    s << addresses;
+    // clang-format off
+    BOOST_CHECK_EQUAL(HexStr(s),
+        "03" // 3 entries
+        // time      service network address address                            port
+        //           flags   id      length
+        "84f4cbb65a" "09"    "01"    "04"    "1a2a3a4a"                         "7071"
+        "84f4cbb65a" "09"    "02"    "10"    "1a1b2a2b3a3b4a4b5a5b6a6b7a7b8a8b" "7071"
+        "84f4cbb65a" "09"    "03"    "0a"    "f1f2f3f4f5f6f7f8f9fa"             "7071");
+    // clang-format on
+    s.clear();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
