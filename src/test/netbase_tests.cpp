@@ -4,9 +4,13 @@
 
 #include <net_permissions.h>
 #include <netbase.h>
+#include <protocol.h>
+#include <serialize.h>
+#include <streams.h>
 #include <test/util/setup_common.h>
 #include <util/strencodings.h>
 #include <util/translation.h>
+#include <version.h>
 
 #include <string>
 
@@ -441,6 +445,343 @@ BOOST_AUTO_TEST_CASE(netbase_dont_resolve_strings_with_embedded_nul_characters)
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0", 23), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0example.com", 34), ret));
     BOOST_CHECK(!LookupSubNet(std::string("5wyqrzbvrdsumnok.onion\0example.com\0", 35), ret));
+}
+
+BOOST_AUTO_TEST_CASE(caddress_serialize_unserialize)
+{
+    std::vector<CNetAddr> net_addrs(3);
+    // 0x1a.0x2a.0x3a.0x4a (4 bytes)
+    BOOST_CHECK(LookupHost("26.42.58.74", net_addrs[0], false));
+    BOOST_CHECK(LookupHost("1a1b:2a2b:3a3b:4a4b:5a5b:6a6b:7a7b:8a8b", net_addrs[1], false));
+    // 0xf1f2f3f4f5f6f7f8f9fa (10 bytes)
+    BOOST_CHECK(LookupHost("6hzph5hv6337r6p2.onion", net_addrs[2], false));
+
+    std::vector<CAddress> addresses;
+    for (const auto& net_addr : net_addrs) {
+        addresses.emplace_back(CAddress(CService(net_addr, 0x7071 /* port */),
+            ServiceFlags(NODE_NETWORK | NODE_WITNESS)));
+        addresses.back().nTime = 0x5eb31bdaU;
+    }
+
+    const char raw_addrv1[] =
+        // 3 entries
+        "03"
+
+        // time
+        "da1bb35e"
+        // service flags
+        "0900000000000000"
+        // fixed 16 byte address (IPv4 embedded in IPv6)
+        "00000000000000000000ffff1a2a3a4a"
+        // port
+        "7071"
+
+        // time
+        "da1bb35e"
+        // service flags
+        "0900000000000000"
+        // fixed 16 byte address
+        "1a1b2a2b3a3b4a4b5a5b6a6b7a7b8a8b"
+        // port
+        "7071"
+
+        // time
+        "da1bb35e"
+        // service flags
+        "0900000000000000"
+        // fixed 16 byte address
+        "fd87d87eeb43f1f2f3f4f5f6f7f8f9fa"
+        // port
+        "7071";
+
+    const char raw_addrv2[] =
+        // 3 entries
+        "03"
+
+        // time
+        "84f4cbb65a"
+        // service flags
+        "09"
+        // network id (IPv4)
+        "01"
+        // address length
+        "04"
+        // address
+        "1a2a3a4a"
+        // port
+        "7071"
+
+        // time
+        "84f4cbb65a"
+        // service flags
+        "09"
+        // network id (IPv6)
+        "02"
+        // address length
+        "10"
+        // address
+        "1a1b2a2b3a3b4a4b5a5b6a6b7a7b8a8b"
+        // port
+        "7071"
+
+        // time
+        "84f4cbb65a"
+        // service flags
+        "09"
+        // network id (TORv2)
+        "03"
+        // address length
+        "0a"
+        // address
+        "f1f2f3f4f5f6f7f8f9fa"
+        // port
+        "7071";
+
+    std::vector<CAddress> addresses_unserialized;
+
+    // Serialize in ADDR format (pre-BIP155).
+
+    CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+
+    s << addresses;
+    BOOST_CHECK_EQUAL(HexStr(s), raw_addrv1);
+    s >> addresses_unserialized;
+    BOOST_CHECK(addresses == addresses_unserialized);
+    addresses_unserialized.clear();
+    s.clear();
+
+    // Serialize in ADDRv2 format (BIP155).
+
+    // Sneak ADDRv2_FORMAT into the version so that the CNetAddr and CAddress
+    // serialize methods produce an address in v2 format.
+    s.SetVersion(s.GetVersion() | ADDRv2_FORMAT);
+    s << addresses;
+    BOOST_CHECK_EQUAL(HexStr(s), raw_addrv2);
+    s >> addresses_unserialized;
+    BOOST_CHECK(addresses == addresses_unserialized);
+    addresses_unserialized.clear();
+    s.clear();
+}
+
+BOOST_AUTO_TEST_CASE(caddress_unserialize_bogus_addrv1)
+{
+    CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+
+    // Valid address.
+    s << MakeSpan(ParseHex(
+        // time
+        "da1bb35e"
+        // service flags
+        "0100000000000000"
+        // fixed 16 byte address
+        "00000000000000000000ffff02030405"
+        // port
+        "a00a"));
+    CAddress addr01;
+    s >> addr01;
+    BOOST_CHECK(addr01.IsValid());
+    BOOST_CHECK_EQUAL(addr01.nTime, 0x5eb31bdaU);
+    BOOST_CHECK_EQUAL(addr01.nServices, NODE_NETWORK);
+    BOOST_CHECK_EQUAL(addr01.ToString(), "2.3.4.5:40970");
+    BOOST_REQUIRE(s.empty());
+
+    // All zeros.
+    s << MakeSpan(ParseHex(
+        // time
+        "00000000"
+        // service flags
+        "0000000000000000"
+        // fixed 16 byte address
+        "00000000000000000000000000000000"
+        // port
+        "0000"));
+    CAddress addr02;
+    s >> addr02;
+    BOOST_CHECK(!addr02.IsValid());
+    BOOST_REQUIRE(s.empty());
+
+    // All 0xff.
+    s << MakeSpan(ParseHex(
+        // time
+        "ffffffff"
+        // service flags
+        "ffffffffffffffff"
+        // fixed 16 byte address
+        "ffffffffffffffffffffffffffffffff"
+        // port
+        "ffff"));
+    CAddress addr03;
+    s >> addr03;
+    BOOST_CHECK(addr03.IsValid());
+    BOOST_CHECK_EQUAL(addr03.nTime, 0xffffffffU);
+    BOOST_CHECK_EQUAL(addr03.nServices, (ServiceFlags)0xffffffffffffffffULL);
+    BOOST_CHECK_EQUAL(addr03.ToString(), "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:65535");
+    BOOST_REQUIRE(s.empty());
+}
+
+BOOST_AUTO_TEST_CASE(caddress_unserialize_bogus_addrv2)
+{
+    CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
+    // Sneak ADDRv2_FORMAT into the version so that the CNetAddr and CAddress
+    // unserialize methods parse as ADDRv2.
+    s.SetVersion(s.GetVersion() | ADDRv2_FORMAT);
+
+    // Valid address.
+    s << MakeSpan(ParseHex(
+        // time
+        "84f4cbb65a"
+        // service flags
+        "01"
+        // network id (IPv4)
+        "01"
+        // address length
+        "04"
+        // address
+        "03040506"
+        // port
+        "b00b"));
+    CAddress addr01;
+    s >> addr01;
+    BOOST_CHECK(addr01.IsValid());
+    BOOST_CHECK_EQUAL(addr01.nTime, 0x5eb31bdaU);
+    BOOST_CHECK_EQUAL(addr01.nServices, NODE_NETWORK);
+    BOOST_CHECK_EQUAL(addr01.ToString(), "3.4.5.6:45067");
+    BOOST_REQUIRE(s.empty());
+
+    // Valid address with time and services equal to 0.
+    s << MakeSpan(ParseHex(
+        // time
+        "00"
+        // service flags
+        "00"
+        // network id (IPv4)
+        "01"
+        // address length
+        "04"
+        // address
+        "03040506"
+        // port
+        "b00b"));
+    CAddress addr02;
+    s >> addr02;
+    BOOST_CHECK(addr02.IsValid());
+    BOOST_CHECK_EQUAL(addr02.nTime, 0U);
+    BOOST_CHECK_EQUAL(addr02.nServices, NODE_NONE);
+    BOOST_CHECK_EQUAL(addr02.ToString(), "3.4.5.6:45067");
+    BOOST_REQUIRE(s.empty());
+
+    // Unknown network id (0).
+    s << MakeSpan(ParseHex(
+        // time
+        "00"
+        // service flags
+        "00"
+        // network id (unknown)
+        "00"
+        // address length
+        "04"
+        // address
+        "03040506"
+        // port
+        "b00b"));
+    CAddress addr03;
+    s >> addr03;
+    BOOST_CHECK(!addr03.IsValid());
+    BOOST_REQUIRE(s.empty());
+
+    // Unknown network id (0xf8).
+    s << MakeSpan(ParseHex(
+        // time
+        "00"
+        // service flags
+        "00"
+        // network id (unknown)
+        "f8"
+        // address length
+        "03"
+        // address
+        "010203"
+        // port
+        "0001"));
+    CAddress addr04;
+    s >> addr04;
+    BOOST_CHECK(!addr04.IsValid());
+    BOOST_REQUIRE(s.empty());
+
+    // Unknown network id (0x8f) with long address (300 bytes).
+    s << MakeSpan(ParseHex(
+        // time
+        "00"
+        // service flags
+        "00"
+        // network id (unknown)
+        "8f"
+        // address length, 300 in CompactSize encoding
+        "fd2c01"
+        // address, 300 bytes
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        // port
+        "1234"));
+    CAddress addr05;
+    s >> addr05;
+    BOOST_CHECK(!addr05.IsValid());
+    BOOST_REQUIRE(s.empty());
+
+    // Known network id (IPv4) with wrong address length.
+    s << MakeSpan(ParseHex(
+        // time
+        "00"
+        // service flags
+        "00"
+        // network id (IPv4)
+        "01"
+        // address length
+        "05"
+        // address
+        "0102030405"
+        // port
+        "1234"));
+    CAddress addr06;
+    s >> addr06;
+    BOOST_CHECK(!addr06.IsValid());
+    BOOST_REQUIRE(s.empty());
+
+    // Known network id (IPv4) with too long address (600 bytes).
+    s << MakeSpan(ParseHex(
+        // time
+        "00"
+        // service flags
+        "00"
+        // network id (IPv4)
+        "01"
+        // address length, 513 in CompactSize encoding
+        "fd0102"
+        // address, 513 bytes
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8"
+        // port
+        "1234"));
+    CAddress addr07;
+    BOOST_CHECK_THROW(s >> addr07, std::ios_base::failure);
+    s.clear();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
