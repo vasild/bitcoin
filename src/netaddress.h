@@ -76,6 +76,12 @@ class CNetAddr
         std::string ToStringIP() const;
         unsigned int GetByte(int n) const;
         uint64_t GetHash() const;
+
+        /**
+         * Get an identifier unique to this address.
+         */
+        std::vector<unsigned char> GetAddrKey() const;
+
         bool GetInAddr(struct in_addr* pipv4Addr) const;
         uint32_t GetNetClass() const;
 
@@ -159,7 +165,11 @@ class CService : public CNetAddr
         CService(const struct in6_addr& ipv6Addr, unsigned short port);
         explicit CService(const struct sockaddr_in6& addr);
 
-        SERIALIZE_METHODS(CService, obj) { READWRITE(obj.ip, Using<BigEndianFormatter<2>>(obj.port)); }
+        SERIALIZE_METHODS(CService, obj)
+        {
+            READWRITEAS(CNetAddr, obj);
+            READWRITE(Using<BigEndianFormatter<2>>(obj.port));
+        }
 };
 
 bool SanityCheckASMap(const std::vector<bool>& asmap);

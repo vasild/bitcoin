@@ -551,6 +551,11 @@ uint64_t CNetAddr::GetHash() const
     return nRet;
 }
 
+std::vector<unsigned char> CNetAddr::GetAddrKey() const
+{
+    return std::vector<unsigned char>(ip, ip + sizeof(ip));
+}
+
 // private extensions to enum Network, only returned by GetExtNetwork,
 // and only used in GetReachabilityFrom
 static const int NET_UNKNOWN = NET_MAX + 0;
@@ -725,12 +730,10 @@ bool CService::GetSockAddr(struct sockaddr* paddr, socklen_t *addrlen) const
  */
 std::vector<unsigned char> CService::GetKey() const
 {
-     std::vector<unsigned char> vKey;
-     vKey.resize(18);
-     memcpy(vKey.data(), ip, 16);
-     vKey[16] = port / 0x100; // most significant byte of our port
-     vKey[17] = port & 0x0FF; // least significant byte of our port
-     return vKey;
+    auto key = GetAddrKey();
+    key.push_back(port / 0x100); // most significant byte of our port
+    key.push_back(port & 0x0FF); // least significant byte of our port
+    return key;
 }
 
 std::string CService::ToStringPort() const
