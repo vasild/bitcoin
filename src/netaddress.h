@@ -43,10 +43,17 @@ enum Network
     NET_MAX,
 };
 
-/** IP address (IPv6, or IPv4 using mapped IPv6 range (::FFFF:0:0/96)) */
+/**
+ * Network address.
+ */
 class CNetAddr
 {
     protected:
+        /**
+         * Network to which this address belongs.
+         */
+        Network m_net;
+
         unsigned char ip[16]; // in network byte order
         uint32_t scopeId{0}; // for scoped/link-local ipv6 addresses
 
@@ -121,7 +128,18 @@ class CNetAddr
         friend bool operator!=(const CNetAddr& a, const CNetAddr& b) { return !(a == b); }
         friend bool operator<(const CNetAddr& a, const CNetAddr& b);
 
-        SERIALIZE_METHODS(CNetAddr, obj) { READWRITE(obj.ip); }
+        SERIALIZE_METHODS(CNetAddr, obj)
+        {
+            if (ser_action.ForRead()) {
+                unsigned char ip_temp[sizeof(ip)];
+                READWRITE(ip_temp);
+                // Use SetRaw() so that m_net is set correctly. For example
+                // ::FFFF:0102:0304 should be set as m_net=NET_IPV4 (1.2.3.4).
+                SetRaw(NET_IPV6, ip_temp);
+            } else {
+                READWRITE(obj.ip);
+            }
+        }
 
         friend class CSubNet;
 };
