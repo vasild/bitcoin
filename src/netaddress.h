@@ -16,14 +16,30 @@
 #include <string>
 #include <vector>
 
+/**
+ * A network type.
+ * @note An address may belong to more than one network, for example `10.0.0.1`
+ * belongs to both `NET_UNROUTABLE` and `NET_IPV4`.
+ * Keep these sequential starting from 0 and `NET_MAX` as last.
+ */
 enum Network
 {
+    /// Addresses from these networks are not publicly routable on the global Internet.
     NET_UNROUTABLE = 0,
+
+    /// IPv4
     NET_IPV4,
+
+    /// IPv6
     NET_IPV6,
+
+    /// TORv2
     NET_ONION,
+
+    /// A set of dummy addresses that map a name to an IPv6 address.
     NET_INTERNAL,
 
+    /// Dummy value to indicate the number of NET_* constants.
     NET_MAX,
 };
 
