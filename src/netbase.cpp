@@ -12,6 +12,7 @@
 #include <util/system.h>
 
 #include <atomic>
+#include <limits>
 
 #ifndef WIN32
 #include <fcntl.h>
@@ -837,10 +838,13 @@ bool LookupSubNet(const std::string& strSubnet, CSubNet& ret)
         if (slash != strSubnet.npos)
         {
             std::string strNetmask = strSubnet.substr(slash + 1);
-            int32_t n;
-            if (ParseInt32(strNetmask, &n)) {
+            uint32_t n;
+            if (ParseUInt32(strNetmask, &n)) {
+                if (n > std::numeric_limits<uint8_t>::max()) {
+                    return false;
+                }
                 // If valid number, assume CIDR variable-length subnet masking
-                ret = CSubNet(network, n);
+                ret = CSubNet(network, (uint8_t)n);
                 return ret.IsValid();
             }
             else // If not a valid number, try full netmask syntax
