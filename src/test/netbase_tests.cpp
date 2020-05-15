@@ -159,6 +159,8 @@ BOOST_AUTO_TEST_CASE(subnet_test)
     BOOST_CHECK(ResolveSubNet("1.2.2.20/26").Match(ResolveIP("1.2.2.63")));
     // All-Matching IPv6 Matches arbitrary IPv4 and IPv6
     BOOST_CHECK(ResolveSubNet("::/0").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
+    // But not `::` because it is considered an invalid address
+    BOOST_CHECK(!ResolveSubNet("::/0").Match(ResolveIP("::")));
     BOOST_CHECK(ResolveSubNet("::/0").Match(ResolveIP("1.2.3.4")));
     // All-Matching IPv4 does not Match IPv6
     BOOST_CHECK(!ResolveSubNet("0.0.0.0/0").Match(ResolveIP("1:2:3:4:5:6:7:1234")));
