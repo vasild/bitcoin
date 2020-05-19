@@ -13,11 +13,22 @@
 #include <compat.h>
 #include <prevector.h>
 #include <serialize.h>
+#include <tinyformat.h>
+#include <util/strencodings.h>
 
 #include <array>
 #include <cstdint>
+#include <ios>
 #include <string>
 #include <vector>
+
+/**
+ * A flag that is ORed into the protocol version to designate that addresses
+ * should be serialized in (unserialized from) v2 format (BIP155).
+ * Make sure that this does not collide with any of the values in `version.h`
+ * or with `SERIALIZE_TRANSACTION_NO_WITNESS`.
+ */
+static const int ADDRv2_FORMAT = 0x20000000;
 
 /**
  * A network type.
@@ -177,16 +188,27 @@ class CNetAddr
         template <typename Stream>
         void Serialize(Stream& s) const
         {
-            SerializeV1Stream(s);
+            if (s.GetVersion() & ADDRv2_FORMAT) {
+                SerializeV2Stream(s);
+            } else {
+                SerializeV1Stream(s);
+            }
         }
 
         /**
          * Unserialize from a stream.
+         * @throws std::ios_base::failure if the stream is in ADDRv2 format and
+         * the data is invalid and cannot be unserialized; ADDRv1 format
+         * unserialization is always possible
          */
         template <typename Stream>
         void Unserialize(Stream& s)
         {
-            UnserializeV1Stream(s);
+            if (s.GetVersion() & ADDRv2_FORMAT) {
+                UnserializeV2Stream(s);
+            } else {
+                UnserializeV1Stream(s);
+            }
         }
 
         friend class CSubNet;
@@ -204,13 +226,42 @@ class CNetAddr
         }
 
         /**
+         * BIP155 network ids recognized by this software.
+         */
+        enum Bip155Network : uint8_t {
+            IPV4 = 1,
+            IPV6 = 2,
+            TORV2 = 3,
+        };
+
+        /**
          * Size of CNetAddr when serialized as ADDRv1 (pre-BIP155) (in bytes).
          */
         static constexpr size_t V1_SERIALIZATION_SIZE = ADDR_IPV6_SIZE;
 
         /**
+         * Maximum size of an address as defined in BIP155 (in bytes).
+         * This is only the size of the address, not the entire CNetAddr object
+         * when serialized.
+         */
+        static constexpr size_t MAX_ADDRv2_SIZE = 512;
+
+        /**
+         * Deduce the BIP155 network id of this address.
+         * @returns BIP155 network id
+         */
+        Bip155Network GetBip155Network() const;
+
+        /**
+         * Deduce the network type from BIP155 network id and size and set `m_net`.
+         * @returns true if the network was recognized and `m_net` was set
+         * @throws std::ios_base::failure if the network is one of the BIP155 founding
+         * networks recognized by this software (id 1..3) and has wrong address size.
+         */
+        bool RecognizeBIP155Network(uint8_t possible_bip155_net, size_t address_size);
+
+        /**
          * Serialize in pre-ADDRv2/BIP155 format to an array.
-         * Some addresses (e.g. TORv3) cannot be serialized in pre-BIP155 format.
          */
         void SerializeV1Array(uint8_t (&arr)[V1_SERIALIZATION_SIZE]) const
         {
@@ -241,6 +292,7 @@ class CNetAddr
                 return;
             case NET_UNROUTABLE:
             case NET_MAX:
+                // m_net is never and should not be set to these
                 assert(false);
             } // no default case, so the compiler can warn about missing cases
 
@@ -249,7 +301,6 @@ class CNetAddr
 
         /**
          * Serialize in pre-ADDRv2/BIP155 format to a stream.
-         * Some addresses (e.g. TORv3) cannot be serialized in pre-BIP155 format.
          */
         template <typename Stream>
         void SerializeV1Stream(Stream& s) const
@@ -259,6 +310,25 @@ class CNetAddr
             SerializeV1Array(serialized);
 
             s << serialized;
+        }
+
+        /**
+         * Serialize as ADDRv2 / BIP155.
+         */
+        template <typename Stream>
+        void SerializeV2Stream(Stream& s) const
+        {
+            if (m_net == NET_INTERNAL) {
+                // Serialize NET_INTERNAL as embedded in IPv6. We need to
+                // serialize such addresses from addrman.
+                s << static_cast<uint8_t>(Bip155Network::IPV6);
+                s << COMPACTSIZE(ADDR_IPV6_SIZE);
+                SerializeV1Stream(s);
+                return;
+            }
+
+            s << static_cast<uint8_t>(GetBip155Network());
+            s << m_addr;
         }
 
         /**
@@ -282,6 +352,50 @@ class CNetAddr
             s >> serialized;
 
             UnserializeV1Array(serialized);
+        }
+
+        /**
+         * Unserialize from a ADDRv2 / BIP155 format.
+         * @throws std::ios_base::failure if the data is invalid and cannot be
+         * unserialized
+         */
+        template <typename Stream>
+        void UnserializeV2Stream(Stream& s)
+        {
+            uint8_t bip155_net;
+            s >> bip155_net;
+
+            size_t address_size;
+            s >> COMPACTSIZE(address_size);
+
+            if (address_size > MAX_ADDRv2_SIZE) {
+                throw std::ios_base::failure(strprintf(
+                    "Address too long: %u > %u", address_size, MAX_ADDRv2_SIZE));
+            }
+
+            if (RecognizeBIP155Network(bip155_net, address_size)) {
+                m_addr.resize(address_size);
+                s >> MakeSpan(m_addr);
+
+                // Recognize NET_INTERNAL embedded in IPv6.
+                if (m_net == NET_IPV6 && HasPrefix(m_addr, INTERNAL_IN_IPV6_PREFIX)) {
+                    m_net = NET_INTERNAL;
+                    memmove(m_addr.data(), m_addr.data() + INTERNAL_IN_IPV6_PREFIX.size(),
+                            ADDR_INTERNAL_SIZE);
+                    m_addr.resize(ADDR_INTERNAL_SIZE);
+                }
+
+            } else {
+                // If we receive an unknown BIP155 network id (from the future?) then
+                // ignore the address and mimic a default-constructed object which is
+                // !IsValid() and thus will not be gossiped, but continue reading next
+                // addresses from the stream.
+                s.ignore(address_size);
+                m_net = NET_IPV6;
+                m_addr.assign(ADDR_IPV6_SIZE, 0x0);
+            }
+
+            scopeId = 0;
         }
 };
 
