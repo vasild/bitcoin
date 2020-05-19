@@ -12,10 +12,20 @@
 #include <attributes.h>
 #include <compat.h>
 #include <serialize.h>
+#include <tinyformat.h>
 
+#include <ios>
 #include <stdint.h>
 #include <string>
 #include <vector>
+
+/**
+ * A flag that is ORed into the protocol version to designate that addresses
+ * should be serialized in (unserialized from) v2 format (BIP155).
+ * Make sure that this does not collide with any of the values in `version.h`
+ * or with `SERIALIZE_TRANSACTION_NO_WITNESS`.
+ */
+static const int ADDRv2_FORMAT = 0x20000000;
 
 /**
  * A network type.
@@ -166,25 +176,70 @@ class CNetAddr
         friend bool operator!=(const CNetAddr& a, const CNetAddr& b) { return !(a == b); }
         friend bool operator<(const CNetAddr& a, const CNetAddr& b);
 
+        /**
+         * Serialize to a stream.
+         */
         template <typename Stream>
         void Serialize(Stream& s) const
         {
-            SerializeV1Stream(s);
+            if (s.GetVersion() & ADDRv2_FORMAT) {
+                SerializeV2Stream(s);
+            } else {
+                SerializeV1Stream(s);
+            }
         }
 
+        /**
+         * Unserialize from a stream.
+         * @throws std::ios_base::failure if the data is invalid and cannot be unserialized
+         */
         template <typename Stream>
         void Unserialize(Stream& s)
         {
-            UnserializeV1Stream(s);
+            if (s.GetVersion() & ADDRv2_FORMAT) {
+                UnserializeV2Stream(s);
+            } else {
+                UnserializeV1Stream(s);
+            }
         }
 
         friend class CSubNet;
 
     private:
         /**
+         * BIP155 network id.
+         */
+        enum class Bip155NetworkId : uint8_t {
+            IPv4 = 0x01,
+            IPv6 = 0x02,
+            TORv2 = 0x03,
+            TORv3 = 0x04,
+            I2P = 0x05,
+            CJDNS = 0x06,
+        };
+
+        /**
          * Size of CNetAddr when serialized as ADDRv1 (pre-BIP155) (in bytes).
          */
         static constexpr size_t V1_SERIALIZATION_SIZE = 16;
+
+        /**
+         * Maximum size of an address as defined in BIP155 (in bytes).
+         */
+        static constexpr size_t MAX_ADDRv2_SIZE = 512;
+
+        /**
+         * Deduce the BIP155 network id of this address.
+         */
+        Bip155NetworkId ToBIP155NetworkId() const;
+
+        /**
+         * Deduce the network type from BIP155 network id and size.
+         * @return true if the network is known and `net` was set
+         */
+        bool FromBIP155NetworkId(Bip155NetworkId bip155_network_id,
+            unsigned int address_size,
+            Network& net) const;
 
         /**
          * Serialize in pre-ADDRv2/BIP155 format to an array.
@@ -239,6 +294,23 @@ class CNetAddr
         }
 
         /**
+         * Serialize as ADDRv2 / BIP155.
+         */
+        template <typename Stream>
+        void SerializeV2Stream(Stream& s) const
+        {
+            if (IsValid()) {
+                s << (uint8_t)ToBIP155NetworkId();
+                s << m_addr;
+            } else {
+                // At least lots of tests try to serialize a default-constructed
+                // `CNetAddr`.
+                s << (uint8_t)0x00;
+                s << std::vector<uint8_t>();
+            }
+        }
+
+        /**
          * Unserialize from a pre-ADDRv2/BIP155 format from an array.
          */
         void UnserializeV1Array(uint8_t (&arr)[V1_SERIALIZATION_SIZE])
@@ -271,6 +343,37 @@ class CNetAddr
             s >> serialized;
 
             UnserializeV1Array(serialized);
+        }
+
+        /**
+         * Unserialize from a ADDRv2 / BIP155 format.
+         * @throws std::ios_base::failure if the data is invalid and cannot be unserialized
+         */
+        template <typename Stream>
+        void UnserializeV2Stream(Stream& s)
+        {
+            uint8_t bip155_network_id;
+            s >> bip155_network_id;
+
+            unsigned int address_size;
+            s >> VARINT(address_size);
+
+            if (address_size > MAX_ADDRv2_SIZE) {
+                throw std::ios_base::failure(strprintf(
+                    "Address too long: %u > %zu", address_size, MAX_ADDRv2_SIZE));
+            }
+
+            if (FromBIP155NetworkId((Bip155NetworkId)bip155_network_id, address_size, m_net)) {
+                m_addr.resize(address_size);
+                s >> MakeSpan(m_addr);
+            } else {
+                // If we receive an unknown BIP155 network id (from the future?) then
+                // mimic a default-constructed object which is !IsValid().
+                m_net = NET_IPV6;
+                m_addr.assign(ADDR_IPv6_SIZE, 0x0);
+            }
+
+            scopeId = 0;
         }
 };
 

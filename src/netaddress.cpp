@@ -10,6 +10,60 @@
 #include <tinyformat.h>
 
 constexpr size_t CNetAddr::V1_SERIALIZATION_SIZE;
+constexpr size_t CNetAddr::MAX_ADDRv2_SIZE;
+
+CNetAddr::Bip155NetworkId CNetAddr::ToBIP155NetworkId() const
+{
+    switch (m_net) {
+    case NET_IPV4: return Bip155NetworkId::IPv4;
+    case NET_IPV6: return Bip155NetworkId::IPv6;
+    case NET_ONION:
+        switch (m_addr.size()) {
+        case ADDR_TORv2_SIZE: return Bip155NetworkId::TORv2;
+        default: assert(!"Unexpected TOR address size");
+        }
+    case NET_UNROUTABLE:
+    case NET_INTERNAL:
+    case NET_MAX:
+        assert(!"NET_UNROUTABLE, NET_INTERNAL and NET_MAX cannot be represented as "
+                "BIP155 network id");
+    }
+
+    assert(!"Unexpected BIP155 network id");
+    return (Bip155NetworkId)0;
+}
+
+bool CNetAddr::FromBIP155NetworkId(Bip155NetworkId bip155_network_id,
+    unsigned int address_size,
+    Network& net) const
+{
+    switch (bip155_network_id) {
+    case Bip155NetworkId::IPv4:
+        if (address_size == ADDR_IPv4_SIZE) {
+           net = NET_IPV4;
+           return true;
+        }
+        return false;
+    case Bip155NetworkId::IPv6:
+        if (address_size == ADDR_IPv6_SIZE) {
+           net = NET_IPV6;
+           return true;
+        }
+        return false;
+    case Bip155NetworkId::TORv2:
+        if (address_size == ADDR_TORv2_SIZE) {
+           net = NET_ONION;
+           return true;
+        }
+        return false;
+    case Bip155NetworkId::TORv3:
+    case Bip155NetworkId::I2P:
+    case Bip155NetworkId::CJDNS:
+        return false;
+    }
+
+    return false;
+}
 
 /**
  * Construct an unspecified IPv6 network address (::/128).
