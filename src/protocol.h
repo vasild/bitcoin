@@ -368,9 +368,20 @@ public:
             // After the version handshake, serialization version is >=
             // MIN_PEER_PROTO_VERSION and all ADDR messages are serialized with
             // nTime.
-            READWRITE(obj.nTime);
+            if (nVersion & ADDRv2_FORMAT) {
+                READWRITE(VARINT(obj.nTime));
+            } else {
+                READWRITE(obj.nTime);
+            }
         }
-        READWRITE(Using<CustomUintFormatter<8>>(obj.nServices));
+        if (nVersion & ADDRv2_FORMAT) {
+            uint64_t services_tmp;
+            SER_WRITE(obj, services_tmp = obj.nServices);
+            READWRITE(VARINT(services_tmp));
+            SER_READ(obj, obj.nServices = static_cast<ServiceFlags>(services_tmp));
+        } else {
+            READWRITE(Using<CustomUintFormatter<8>>(obj.nServices));
+        }
         READWRITEAS(CService, obj);
     }
 
