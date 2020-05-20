@@ -232,6 +232,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsIPv4());
 
     BOOST_CHECK(addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "0.0.0.0");
 
     // IPv4, INADDR_NONE
@@ -240,6 +241,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsIPv4());
 
     BOOST_CHECK(!addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "255.255.255.255");
 
     // IPv4, casual
@@ -248,6 +250,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsIPv4());
 
     BOOST_CHECK(!addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "12.34.56.78");
 
     // IPv6, in6addr_any
@@ -256,6 +259,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsIPv6());
 
     BOOST_CHECK(addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "::");
 
     // IPv6, casual
@@ -264,6 +268,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsIPv6());
 
     BOOST_CHECK(!addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "1122:3344:5566:7788:9900:aabb:ccdd:eeff");
 
     // TORv2
@@ -272,6 +277,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsTor());
 
     BOOST_CHECK(!addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "6hzph5hv6337r6p2.onion");
 
     // Internal
@@ -280,6 +286,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_basic)
     BOOST_REQUIRE(addr.IsInternal());
 
     BOOST_CHECK(!addr.IsBindAny());
+    BOOST_CHECK(addr.IsAddrV1Compatible());
     BOOST_CHECK_EQUAL(addr.ToString(), "esffpvrt3wpeaygy.internal");
 }
 

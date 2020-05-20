@@ -77,6 +77,19 @@ extern const char* VERACK;
  */
 extern const char* ADDR;
 /**
+ * The addrv2 message relays connection information for peers on the network just
+ * like the addr message, but is extended to allow gossipping of longer node
+ * addresses (see BIP155).
+ */
+extern const char *ADDRv2;
+/**
+ * The sendaddrv2 message signals support for receiving ADDRv2 messages (BIP155).
+ * It also implies that its sender can encode as ADDRv2 and would send ADDRv2
+ * instead of ADDR to a peer who has indicated ADDRv2 support (has sent
+ * SENDADDRv2 himself).
+ */
+extern const char *SENDADDRv2;
+/**
  * The inv message (inventory message) transmits one or more inventories of
  * objects known to the transmitting peer.
  */

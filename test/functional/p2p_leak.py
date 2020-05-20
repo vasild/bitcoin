@@ -45,6 +45,7 @@ class LazyPeer(P2PInterface):
     def on_verack(self, message): self.bad_message(message)
     def on_inv(self, message): self.bad_message(message)
     def on_addr(self, message): self.bad_message(message)
+    def on_sendaddrv2(self, message): self.bad_message(message)
     def on_getdata(self, message): self.bad_message(message)
     def on_getblocks(self, message): self.bad_message(message)
     def on_tx(self, message): self.bad_message(message)

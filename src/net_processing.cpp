@@ -2433,6 +2433,9 @@ void PeerLogicValidation::ProcessMessage(CNode& pfrom, const std::string& msg_ty
 
         m_connman.PushMessage(&pfrom, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERACK));
 
+        // Signal ADDRv2 support (BIP155).
+        m_connman.PushMessage(&pfrom, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::SENDADDRv2));
+
         pfrom.nServices = nServices;
         pfrom.SetAddrLocal(addrMe);
         {
@@ -2541,6 +2544,9 @@ void PeerLogicValidation::ProcessMessage(CNode& pfrom, const std::string& msg_ty
                       pfrom.m_tx_relay == nullptr ? "block-relay" : "full-relay");
         }
 
+        // Signal ADDRv2 support (BIP155).
+        connman.PushMessage(&pfrom, msgMaker.Make(NetMsgType::SENDADDRv2));
+
         if (pfrom.nVersion >= SENDHEADERS_VERSION) {
             // Tell our peer we prefer to receive headers rather than inv's
             // We send this to non-NODE NETWORK peers as well, because even
@@ -2590,9 +2596,29 @@ void PeerLogicValidation::ProcessMessage(CNode& pfrom, const std::string& msg_ty
         return;
     }
 
-    if (msg_type == NetMsgType::ADDR) {
+    if (msg_type == NetMsgType::ADDR || msg_type == NetMsgType::ADDRv2) {
+        const auto version_orig = vRecv.GetVersion();
+        if (msg_type == NetMsgType::ADDRv2) {
+            // Sneak ADDRv2_FORMAT into the version so that the CNetAddr and CAddress
+            // unserialize methods know that an address in v2 format is coming.
+            vRecv.SetVersion(version_orig | ADDRv2_FORMAT);
+        }
         std::vector<CAddress> vAddr;
-        vRecv >> vAddr;
+
+        try {
+            vRecv >> vAddr;
+        } catch (const std::exception& e) {
+            vRecv.SetVersion(version_orig);
+
+            LOCK(cs_main);
+            Misbehaving(pfrom.GetId(), 20,
+                strprintf(
+                    "Supplied us with a message that contains an unparsable address: %s",
+                    e.what()));
+            return;
+        }
+
+        vRecv.SetVersion(version_orig);
 
         if (!pfrom.IsAddrRelayPeer()) {
             return;
@@ -2618,6 +2644,11 @@ void PeerLogicValidation::ProcessMessage(CNode& pfrom, const std::string& msg_ty
             if (!MayHaveUsefulAddressDB(addr.nServices) && !HasAllDesirableServiceFlags(addr.nServices))
                 continue;
 
+            // Skip invalid addresses, maybe a new BIP155 network id from the future.
+            if (!addr.IsValid()) {
+                continue;
+            }
+
             if (addr.nTime <= 100000000 || addr.nTime > nNow + 10 * 60)
                 addr.nTime = nNow - 5 * 24 * 60 * 60;
             pfrom.AddAddressKnown(addr);
@@ -2640,6 +2671,11 @@ void PeerLogicValidation::ProcessMessage(CNode& pfrom, const std::string& msg_ty
             pfrom.fGetAddr = false;
         if (pfrom.IsAddrFetchConn())
             pfrom.fDisconnect = true;
+        return;
+    }
+
+    if (msg_type == NetMsgType::SENDADDRv2) {
+        pfrom.m_wants_addrv2 = true;
         return;
     }
 
@@ -4147,6 +4183,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             std::vector<CAddress> vAddr;
             vAddr.reserve(pto->vAddrToSend.size());
             assert(pto->m_addr_known);
+            const auto& msg_type = pto->m_wants_addrv2 ? NetMsgType::ADDRv2 : NetMsgType::ADDR;
             for (const CAddress& addr : pto->vAddrToSend)
             {
                 if (!pto->m_addr_known->contains(addr.GetKey()))
@@ -4156,14 +4193,14 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     // receiver rejects addr messages larger than MAX_ADDR_TO_SEND
                     if (vAddr.size() >= MAX_ADDR_TO_SEND)
                     {
-                        m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                        m_connman.PushMessage(pto, msgMaker.Make(msg_type, vAddr));
                         vAddr.clear();
                     }
                 }
             }
             pto->vAddrToSend.clear();
             if (!vAddr.empty())
-                m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                m_connman.PushMessage(pto, msgMaker.Make(msg_type, vAddr));
             // we only send the big addr message once
             if (pto->vAddrToSend.capacity() > 40)
                 pto->vAddrToSend.shrink_to_fit();

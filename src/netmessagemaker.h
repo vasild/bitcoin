@@ -18,6 +18,11 @@ public:
     CSerializedNetMsg Make(int nFlags, std::string msg_type, Args&&... args) const
     {
         CSerializedNetMsg msg;
+        if (msg_type == NetMsgType::ADDRv2) {
+            // Sneak ADDRv2_FORMAT into the version so that the CNetAddr and CAddress
+            // serialize methods produce an address in v2 format.
+            nFlags |= ADDRv2_FORMAT;
+        }
         msg.m_type = std::move(msg_type);
         CVectorWriter{ SER_NETWORK, nFlags | nVersion, msg.data, 0, std::forward<Args>(args)... };
         return msg;

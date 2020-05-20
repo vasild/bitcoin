@@ -1053,6 +1053,23 @@ class msg_addr:
         return "msg_addr(addrs=%s)" % (repr(self.addrs))
 
 
+class msg_sendaddrv2:
+    __slots__ = ()
+    msgtype = b"sendaddrv2"
+
+    def __init__(self):
+        pass
+
+    def deserialize(self, f):
+        pass
+
+    def serialize(self):
+        return b""
+
+    def __repr__(self):
+        return "msg_sendaddrv2()"
+
+
 class msg_inv:
     __slots__ = ("inv",)
     msgtype = b"inv"
