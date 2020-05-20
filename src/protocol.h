@@ -79,6 +79,12 @@ extern const char* VERACK;
  */
 extern const char* ADDR;
 /**
+ * The addrv2 message relays connection information for peers on the network just
+ * like the addr message, but is extended to allow gossipping of longer node
+ * addresses (see BIP155).
+ */
+extern const char *ADDRv2;
+/**
  * The inv message (inventory message) transmits one or more inventories of
  * objects known to the transmitting peer.
  * @see https://bitcoin.org/en/developer-reference#inv
@@ -263,6 +269,8 @@ enum ServiceFlags : uint64_t {
     // NODE_WITNESS indicates that a node can be asked for blocks and transactions including
     // witness data.
     NODE_WITNESS = (1 << 3),
+    // NODE_ADDRv2 indicates send and receive support for ADDRv2 messages (BIP155).
+    NODE_ADDRv2 = (1 << 4),
     // NODE_NETWORK_LIMITED means the same as NODE_NETWORK with the limitation of only
     // serving the last 288 (2 day) blocks
     // See BIP159 for details on how this is implemented.

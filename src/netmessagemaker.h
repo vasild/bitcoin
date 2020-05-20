@@ -18,6 +18,9 @@ public:
     CSerializedNetMsg Make(int nFlags, std::string sCommand, Args&&... args) const
     {
         CSerializedNetMsg msg;
+        if (sCommand == NetMsgType::ADDRv2) {
+            nFlags |= ADDRv2_FORMAT;
+        }
         msg.command = std::move(sCommand);
         CVectorWriter{ SER_NETWORK, nFlags | nVersion, msg.data, 0, std::forward<Args>(args)... };
         return msg;

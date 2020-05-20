@@ -2322,9 +2322,27 @@ bool ProcessMessage(CNode* pfrom, const std::string& msg_type, CDataStream& vRec
         return false;
     }
 
-    if (msg_type == NetMsgType::ADDR) {
+    if (msg_type == NetMsgType::ADDR || msg_type == NetMsgType::ADDRv2) {
+        const auto version_orig = vRecv.GetVersion();
+        if (msg_type == NetMsgType::ADDRv2) {
+            vRecv.SetVersion(version_orig | ADDRv2_FORMAT);
+        }
         std::vector<CAddress> vAddr;
-        vRecv >> vAddr;
+
+        try {
+            vRecv >> vAddr;
+        } catch (const std::exception& e) {
+            vRecv.SetVersion(version_orig);
+
+            LOCK(cs_main);
+            Misbehaving(pfrom->GetId(), 20,
+                strprintf(
+                    "Supplied us with a message that contains an unparsable address: %s",
+                    e.what()));
+            return false;
+        }
+
+        vRecv.SetVersion(version_orig);
 
         // Don't want addr from older versions unless seeding
         if (pfrom->nVersion < CADDR_TIME_VERSION && connman->GetAddressCount() > 1000)
@@ -2353,6 +2371,11 @@ bool ProcessMessage(CNode* pfrom, const std::string& msg_type, CDataStream& vRec
             // part because we may make feeler connections to them.
             if (!MayHaveUsefulAddressDB(addr.nServices) && !HasAllDesirableServiceFlags(addr.nServices))
                 continue;
+
+            // Skip invalid addresses, maybe a new BIP155 network id from the future.
+            if (!addr.IsValid()) {
+                continue;
+            }
 
             if (addr.nTime <= 100000000 || addr.nTime > nNow + 10 * 60)
                 addr.nTime = nNow - 5 * 24 * 60 * 60;
@@ -3774,6 +3797,8 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             std::vector<CAddress> vAddr;
             vAddr.reserve(pto->vAddrToSend.size());
             assert(pto->m_addr_known);
+            const auto& msg_type =
+                (pto->nServices & NODE_ADDRv2) ? NetMsgType::ADDRv2 : NetMsgType::ADDR;
             for (const CAddress& addr : pto->vAddrToSend)
             {
                 if (!pto->m_addr_known->contains(addr.GetKey()))
@@ -3783,14 +3808,14 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     // receiver rejects addr messages larger than 1000
                     if (vAddr.size() >= 1000)
                     {
-                        connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                        connman->PushMessage(pto, msgMaker.Make(msg_type, vAddr));
                         vAddr.clear();
                     }
                 }
             }
             pto->vAddrToSend.clear();
             if (!vAddr.empty())
-                connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                connman->PushMessage(pto, msgMaker.Make(msg_type, vAddr));
             // we only send the big addr message once
             if (pto->vAddrToSend.capacity() > 40)
                 pto->vAddrToSend.shrink_to_fit();
