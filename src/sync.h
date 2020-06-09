@@ -103,6 +103,9 @@ public:
     }
 
     using UniqueLock = std::unique_lock<PARENT>;
+#ifdef __clang__
+    const AnnotatedMixin& operator!() const { return *this; }
+#endif // __clang__
 };
 
 /**

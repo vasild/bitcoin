@@ -60,6 +60,10 @@
 // and should only be used when sync.h Mutex/LOCK/etc are not usable.
 class LOCKABLE StdMutex : public std::mutex
 {
+public:
+#ifdef __clang__
+    const StdMutex& operator!() const { return *this; }
+#endif // __clang__
 };
 
 // StdLockGuard provides an annotated version of std::lock_guard for us,
