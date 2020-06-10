@@ -91,6 +91,7 @@ CAddrInfo* CAddrMan::Create(const CAddress& addr, const CNetAddr& addrSource, in
     mapAddr[addr] = nId;
     mapInfo[nId].nRandomPos = vRandom.size();
     vRandom.push_back(nId);
+    ++m_size;
     if (pnId)
         *pnId = nId;
     return &mapInfo[nId];
@@ -125,6 +126,7 @@ void CAddrMan::Delete(int nId)
 
     SwapRandom(info.nRandomPos, vRandom.size() - 1);
     vRandom.pop_back();
+    --m_size;
     mapAddr.erase(info);
     mapInfo.erase(nId);
     nNew--;
@@ -406,6 +408,9 @@ int CAddrMan::Check_()
 {
     std::set<int> setTried;
     std::map<int, int> mapNew;
+
+    if (vRandom.size() != m_size)
+        return -20;
 
     if (vRandom.size() != (size_t)(nTried + nNew))
         return -7;

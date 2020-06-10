@@ -193,6 +193,9 @@ private:
     //! randomly-ordered vector of all nIds
     std::vector<int> vRandom GUARDED_BY(cs);
 
+    //! a cached value of `vRandom.size()` which can be accessed without a mutex protection
+    std::atomic_size_t m_size;
+
     // number of "tried" entries
     int nTried GUARDED_BY(cs);
 
@@ -224,6 +227,7 @@ private:
     void ClearNonLockHelper() EXCLUSIVE_LOCKS_REQUIRED(cs)
     {
         std::vector<int>().swap(vRandom);
+        m_size = 0;
         nKey = insecure_rand.rand256();
         for (size_t bucket = 0; bucket < ADDRMAN_NEW_BUCKET_COUNT; bucket++) {
             for (size_t entry = 0; entry < ADDRMAN_BUCKET_SIZE; entry++) {
@@ -444,6 +448,7 @@ public:
             mapAddr[info] = n;
             info.nRandomPos = vRandom.size();
             vRandom.push_back(n);
+            ++m_size;
         }
         nIdCount = nNew;
 
@@ -458,6 +463,7 @@ public:
                 info.nRandomPos = vRandom.size();
                 info.fInTried = true;
                 vRandom.push_back(nIdCount);
+                ++m_size;
                 mapInfo[nIdCount] = info;
                 mapAddr[info] = nIdCount;
                 vvTried[nKBucket][nKBucketPos] = nIdCount;
@@ -551,8 +557,7 @@ public:
     //! Return the number of (unique) addresses in all tables.
     size_t size() const
     {
-        LOCK(cs); // TODO: Cache this in an atomic to avoid this overhead
-        return vRandom.size();
+        return m_size;
     }
 
     //! Consistency check
