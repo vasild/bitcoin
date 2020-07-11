@@ -477,7 +477,7 @@ static void PushNodeVersion(CNode& pnode, CConnman* connman, int64_t nTime)
     CAddress addrYou = (addr.IsRoutable() && !IsProxy(addr) ? addr : CAddress(CService(), addr.nServices));
     CAddress addrMe = CAddress(CService(), nLocalNodeServices);
 
-    connman->PushMessage(&pnode, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERSION, PROTOCOL_VERSION, (uint64_t)nLocalNodeServices, nTime, addrYou, addrMe,
+    connman->PushMessage(&pnode, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::VERSION, PROTOCOL_VERSION, (uint64_t)nLocalNodeServices, nTime, WithParams(AddrSerialization::NETWORK_NOTIME, addrYou), WithParams(AddrSerialization::NETWORK_NOTIME, addrMe),
             nonce, strSubVersion, nNodeStartingHeight, ::g_relay_txes && pnode.m_tx_relay != nullptr));
 
     if (fLogIPs) {
@@ -2269,7 +2269,7 @@ void ProcessMessage(
         int nStartingHeight = -1;
         bool fRelay = true;
 
-        vRecv >> nVersion >> nServiceInt >> nTime >> addrMe;
+        vRecv >> nVersion >> nServiceInt >> nTime >> WithParams(AddrSerialization::NETWORK_NOTIME, addrMe);
         nSendVersion = std::min(nVersion, PROTOCOL_VERSION);
         nServices = ServiceFlags(nServiceInt);
         if (!pfrom.fInbound)
@@ -2290,8 +2290,9 @@ void ProcessMessage(
             return;
         }
 
-        if (!vRecv.empty())
-            vRecv >> addrFrom >> nNonce;
+        if (!vRecv.empty()) {
+            vRecv >> WithParams(AddrSerialization::NETWORK_NOTIME, addrFrom) >> nNonce;
+        }
         if (!vRecv.empty()) {
             std::string strSubVer;
             vRecv >> LIMITED_STRING(strSubVer, MAX_SUBVERSION_LENGTH);
@@ -2464,7 +2465,7 @@ void ProcessMessage(
 
     if (msg_type == NetMsgType::ADDR) {
         std::vector<CAddress> vAddr;
-        vRecv >> vAddr;
+        vRecv >> WithParams(AddrSerialization::NETWORK_WITHTIME, vAddr);
 
         if (!pfrom.IsAddrRelayPeer()) {
             return;
@@ -3938,14 +3939,14 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     // receiver rejects addr messages larger than 1000
                     if (vAddr.size() >= 1000)
                     {
-                        connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                        connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, WithParams(AddrSerialization::NETWORK_WITHTIME, vAddr)));
                         vAddr.clear();
                     }
                 }
             }
             pto->vAddrToSend.clear();
             if (!vAddr.empty())
-                connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, vAddr));
+                connman->PushMessage(pto, msgMaker.Make(NetMsgType::ADDR, WithParams(AddrSerialization::NETWORK_WITHTIME, vAddr)));
             // we only send the big addr message once
             if (pto->vAddrToSend.capacity() > 40)
                 pto->vAddrToSend.shrink_to_fit();
