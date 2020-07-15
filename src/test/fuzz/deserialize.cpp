@@ -196,6 +196,12 @@ void test_one_input(const std::vector<uint8_t>& buffer)
 #elif ADDRESS_DESERIALIZE
         CAddress a;
         DeserializeFromFuzzingInput(buffer, WithParams(AddrSerialization::NETWORK_NOTIME, a));
+#elif ADDRESS_DESERIALIZE_WITHTIME
+        CAddress a;
+        DeserializeFromFuzzingInput(buffer, WithParams(AddrSerialization::NETWORK_WITHTIME, a));
+#elif ADDRESS_DESERIALIZE_DISK
+        CAddress a;
+        DeserializeFromFuzzingInput(buffer, WithParams(AddrSerialization::DISK, a));
 #elif INV_DESERIALIZE
         CInv i;
         DeserializeFromFuzzingInput(buffer, i);
