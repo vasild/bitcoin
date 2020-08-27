@@ -392,6 +392,70 @@ BOOST_AUTO_TEST_CASE(cnetaddr_unserialize_v2)
     BOOST_REQUIRE(!s.empty()); // The stream is not consumed on invalid input.
     s.clear();
 
+    // Valid TORv3.
+    s << MakeSpan(ParseHex("04"                               // network type (TORv3)
+                           "20"                               // address length
+                           "79bcc625184b05194975c28b66b66b04" // address
+                           "69f7f6556fb1ac3189a79b40dda32f1f"
+                           ));
+    s >> addr;
+    BOOST_CHECK(addr.IsValid());
+    BOOST_CHECK(addr.IsTor());
+    BOOST_CHECK_EQUAL(addr.ToString(),
+                      "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion");
+    BOOST_REQUIRE(s.empty());
+
+    // Invalid TORv3, with bogus length.
+    s << MakeSpan(ParseHex("04" // network type (TORv2)
+                           "00" // address length
+                           "00" // address
+                           ));
+    BOOST_CHECK_EXCEPTION(s >> addr, std::ios_base::failure,
+                          HasReason("BIP155 TORv3 address with length 0 (should be 32)"));
+    BOOST_REQUIRE(!s.empty()); // The stream is not consumed on invalid input.
+    s.clear();
+
+    // Valid I2P.
+    s << MakeSpan(ParseHex("05"                               // network type (I2P)
+                           "20"                               // address length
+                           "a2894dabaec08c0051a481a6dac88b64" // address
+                           "f98232ae42d4b6fd2fa81952dfe36a87"));
+    s >> addr;
+    BOOST_CHECK(addr.IsValid());
+    BOOST_CHECK_EQUAL(addr.ToString(),
+                      "ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p");
+    BOOST_REQUIRE(s.empty());
+
+    // Invalid I2P, with bogus length.
+    s << MakeSpan(ParseHex("05" // network type (TORv2)
+                           "03" // address length
+                           "00" // address
+                           ));
+    BOOST_CHECK_EXCEPTION(s >> addr, std::ios_base::failure,
+                          HasReason("BIP155 I2P address with length 3 (should be 32)"));
+    BOOST_REQUIRE(!s.empty()); // The stream is not consumed on invalid input.
+    s.clear();
+
+    // Valid CJDNS.
+    s << MakeSpan(ParseHex("06"                               // network type (I2P)
+                           "10"                               // address length
+                           "fc000001000200030004000500060007" // address
+                           ));
+    s >> addr;
+    BOOST_CHECK(addr.IsValid());
+    BOOST_CHECK_EQUAL(addr.ToString(), "fc00:1:2:3:4:5:6:7");
+    BOOST_REQUIRE(s.empty());
+
+    // Invalid CJDNS, with bogus length.
+    s << MakeSpan(ParseHex("06" // network type (TORv2)
+                           "01" // address length
+                           "00" // address
+                           ));
+    BOOST_CHECK_EXCEPTION(s >> addr, std::ios_base::failure,
+                          HasReason("BIP155 CJDNS address with length 1 (should be 16)"));
+    BOOST_REQUIRE(!s.empty()); // The stream is not consumed on invalid input.
+    s.clear();
+
     // Unknown, with extreme length.
     s << MakeSpan(ParseHex("aa"             // network type (unknown)
                            "fe00000002"     // address length (CompactSize's MAX_SIZE)
