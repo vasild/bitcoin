@@ -378,6 +378,14 @@ libbitcoin_wallet_tool_a_SOURCES = \
   wallet/wallettool.cpp \
   $(BITCOIN_CORE_H)
 
+# Imported keccak-tiny library, compile as a separate library so that we can
+# specify different compilation flags
+LIBKECCAK = libkeccak_tiny.a
+noinst_LIBRARIES = $(LIBKECCAK)
+libkeccak_tiny_a_SOURCES = crypto/keccak-tiny/keccak-tiny-unrolled.c
+libkeccak_tiny_a_CPPFLAGS = $(AM_CPPFLAGS)
+libkeccak_tiny_a_CFLAGS = -std=c11 -Wextra -Wpedantic -Wall $(PIE_FLAGS)
+
 # crypto primitives library
 crypto_libbitcoin_crypto_base_a_CPPFLAGS = $(AM_CPPFLAGS)
 crypto_libbitcoin_crypto_base_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -403,6 +411,8 @@ crypto_libbitcoin_crypto_base_a_SOURCES = \
   crypto/sha1.h \
   crypto/sha256.cpp \
   crypto/sha256.h \
+  crypto/sha3_256.cpp \
+  crypto/sha3_256.h \
   crypto/sha512.cpp \
   crypto/sha512.h \
   crypto/siphash.cpp \
@@ -411,6 +421,8 @@ crypto_libbitcoin_crypto_base_a_SOURCES = \
 if USE_ASM
 crypto_libbitcoin_crypto_base_a_SOURCES += crypto/sha256_sse4.cpp
 endif
+
+crypto_libbitcoin_crypto_base_a_LIBADD = $(LIBKECCAK)
 
 crypto_libbitcoin_crypto_sse41_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 crypto_libbitcoin_crypto_sse41_a_CPPFLAGS = $(AM_CPPFLAGS)
@@ -578,6 +590,7 @@ bitcoin_bin_ldadd = \
   $(LIBBITCOIN_ZMQ) \
   $(LIBBITCOIN_CONSENSUS) \
   $(LIBBITCOIN_CRYPTO) \
+  $(LIBKECCAK) \
   $(LIBLEVELDB) \
   $(LIBLEVELDB_SSE42) \
   $(LIBMEMENV) \
@@ -659,7 +672,7 @@ if GLIBC_BACK_COMPAT
 endif
 
 libbitcoinconsensus_la_LDFLAGS = $(AM_LDFLAGS) -no-undefined $(RELDFLAGS)
-libbitcoinconsensus_la_LIBADD = $(LIBSECP256K1)
+libbitcoinconsensus_la_LIBADD = $(LIBKECCAK) $(LIBSECP256K1)
 libbitcoinconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_BITCOIN_INTERNAL
 libbitcoinconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
