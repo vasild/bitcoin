@@ -50,13 +50,6 @@ void CNetAddr::SetIP(const CNetAddr& ipIn)
     m_addr = ipIn.m_addr;
 }
 
-template <typename T1, size_t PREFIX_LEN>
-inline bool HasPrefix(const T1& obj, const std::array<uint8_t, PREFIX_LEN>& prefix)
-{
-    return obj.size() >= PREFIX_LEN &&
-           std::equal(std::begin(prefix), std::end(prefix), std::begin(obj));
-}
-
 void CNetAddr::SetLegacyIPv6(Span<const uint8_t> ipv6)
 {
     assert(ipv6.size() == ADDR_IPV6_SIZE);

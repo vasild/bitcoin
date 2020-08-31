@@ -193,6 +193,17 @@ class CNetAddr
 
     private:
         /**
+         * Check whether a container begins with the given prefix.
+         */
+        template <typename T1, size_t PREFIX_LEN>
+        static bool HasPrefix(const T1& obj,
+                              const std::array<uint8_t, PREFIX_LEN>& prefix)
+        {
+            return obj.size() >= PREFIX_LEN &&
+                   std::equal(std::begin(prefix), std::end(prefix), std::begin(obj));
+        }
+
+        /**
          * Size of CNetAddr when serialized as ADDRv1 (pre-BIP155) (in bytes).
          */
         static constexpr size_t V1_SERIALIZATION_SIZE = ADDR_IPV6_SIZE;
