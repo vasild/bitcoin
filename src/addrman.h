@@ -523,6 +523,7 @@ public:
         }
 
         Check();
+        std::cout << ToString() << std::endl;
     }
 
     void Clear()
@@ -693,6 +694,10 @@ public:
         Check();
     }
 
+    /**
+     * Generate a JSON string containing all addresses in AddrMan.
+     */
+    std::string ToString() const;
 };
 
 #endif // BITCOIN_ADDRMAN_H

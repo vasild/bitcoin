@@ -654,3 +654,48 @@ std::vector<bool> CAddrMan::DecodeAsmap(fs::path path)
     }
     return bits;
 }
+
+#include <netbase.h>
+
+#include <string>
+
+std::string CAddrMan::ToString() const
+{
+    LOCK(cs);
+
+    std::string ret{"["};
+
+    for (const auto& pair : mapInfo) {
+        const CAddrInfo& info = pair.second;
+
+        if (ret.length() > 1) {
+            ret += ",";
+        }
+
+        ret += strprintf(
+            "{"
+            R"("net":"%s",)"
+            R"("addr":"%s",)"
+            R"("port":%u,)"
+            R"("time":%u,)"
+            R"("services":%u,)"
+            R"("last_success":%u,)"
+            R"("attempts":%u,)"
+            R"("source":{"net":"%s","addr":"%s"})"
+            "}",
+            GetNetworkName(info.GetNetwork()),
+            info.ToStringIP(),
+            info.port,
+            info.nTime,
+            info.nServices,
+            info.nLastSuccess,
+            info.nAttempts,
+            GetNetworkName(info.source.GetNetwork()),
+            info.source.ToStringIP()
+        );
+    }
+
+    ret += "]";
+
+    return ret;
+}
