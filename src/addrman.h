@@ -57,6 +57,7 @@ private:
     int nRandomPos{-1};
 
     friend class CAddrMan;
+    friend class CAddrManDeterministic;
 
 public:
 
@@ -172,6 +173,7 @@ static const int64_t ADDRMAN_TEST_WINDOW = 40*60; // 40 minutes
 class CAddrMan
 {
 friend class CAddrManTest;
+friend class CAddrManDeterministic;
 protected:
     //! critical section to protect the inner data structures
     mutable RecursiveMutex cs;
