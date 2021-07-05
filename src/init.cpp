@@ -1735,12 +1735,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     CService onion_service_target;
     if (!connOptions.onion_binds.empty()) {
         onion_service_target = connOptions.onion_binds.front();
-    } else if (!connOptions.vBinds.empty()) {
-        onion_service_target = connOptions.vBinds.front();
-    } else if (!connOptions.vWhiteBinds.empty()) {
-        onion_service_target = connOptions.vWhiteBinds.front().m_service;
     } else {
-        assert(connOptions.bind_on_any);
         onion_service_target = DefaultOnionServiceTarget();
         connOptions.onion_binds.push_back(onion_service_target);
     }

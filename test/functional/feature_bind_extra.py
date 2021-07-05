@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2020 The Bitcoin Core developers
+# Copyright (c) 2014-2021 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """
@@ -64,11 +64,11 @@ class BindExtraTest(BitcoinTestFramework):
             ]
         )
 
-        # Node1, no -bind=...=onion, thus no extra port for Tor target.
+        # Node1, -bind=... without -bind=...=onion, the -bind= target + tor target.
         self.expected.append(
             [
                 ['-bind=127.0.0.1:{}'.format(port)],
-                [(loopback_ipv4, port)]
+                [(loopback_ipv4, port), (loopback_ipv4, REGTEST_TOR_TARGET_PORT)]
             ],
         )
         port += 1
@@ -97,10 +97,12 @@ class BindExtraTest(BitcoinTestFramework):
             self.expected[i][1].append((loopback_ipv4, rpc_port(i)))
 
         self.extra_args = list(map(lambda e: e[0], self.expected))
-        self.setup_nodes()
+        self.add_nodes(self.num_nodes, self.extra_args)
+        # Don't start the nodes, as some of them would collide trying to bind on the same port.
 
     def run_test(self):
         for i in range(len(self.expected)):
+            self.start_node(i)
             pid = self.nodes[i].process.pid
             actual = set(get_bind_addrs(pid))
             # Remove IPv6 addresses because on some CI environments "::1" is not configured
@@ -109,6 +111,7 @@ class BindExtraTest(BitcoinTestFramework):
             # that bitcoind has bound on "::1" (for RPC) and "::" (for P2P).
             actual_without_ipv6 = set(filter(lambda e: len(e[0]) != 32, actual))
             assert_equal(actual_without_ipv6, set(self.expected[i][1]))
+            self.stop_node(i)
 
 if __name__ == '__main__':
     BindExtraTest().main()
