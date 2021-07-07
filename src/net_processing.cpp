@@ -2812,7 +2812,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
             // Apply rate limiting.
             if (rate_limited) {
-                if (peer->m_addr_token_bucket < 1.0) break;
+                if (peer->m_addr_token_bucket < 1.0) {
+                    LogPrint(BCLog::NET, "Rate limiting an address message from peer=%d\n", pfrom.GetId());
+                    break;
+                }
                 peer->m_addr_token_bucket -= 1.0;
             }
             // We only bother storing full nodes, though this may include
