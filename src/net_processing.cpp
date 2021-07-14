@@ -2808,15 +2808,27 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             const auto time_diff = std::max(current_time - peer->m_addr_token_timestamp, 0us);
             const double increment = CountSecondsDouble(time_diff) * MAX_ADDR_RATE_PER_SECOND;
             peer->m_addr_token_bucket = std::min<double>(peer->m_addr_token_bucket + increment, MAX_ADDR_PROCESSING_TOKEN_BUCKET);
-            if (rate_limited && vAddr.size() > peer->m_addr_token_bucket) {
-                num_rate_limit = (uint64_t)std::ceil(vAddr.size() - peer->m_addr_token_bucket);
-                LogPrint(BCLog::NET, "Rate limiting %u of %u addresses from a message from peer=%d%s\n",
-                         pfrom.GetId(),
-                         num_rate_limit,
-                         vAddr.size(),
-                         fLogIPs ? ", peeraddr=" + pfrom.addr.ToString() : "");
-            }
         }
+        if (rate_limited && vAddr.size() > peer->m_addr_token_bucket) {
+            num_rate_limit = (uint64_t)std::ceil(vAddr.size() - peer->m_addr_token_bucket);
+        }
+        std::string addresses;
+        for (const auto& addr : vAddr) {
+            if (!addresses.empty()) {
+                addresses += ";";
+            }
+            addresses += strprintf("%s|%u|%u",
+                                   addr.ToStringIPPort(),
+                                   addr.nTime,
+                                   count_microseconds(current_time) / 1000000 - addr.nTime);
+        }
+        LogPrint(BCLog::NET,
+                 "Rate limiting %u of %u addresses from a message from peer=%d%s, addresses=%s\n",
+                 num_rate_limit,
+                 vAddr.size(),
+                 pfrom.GetId(),
+                 fLogIPs ? ", peeraddr=" + pfrom.addr.ToString() : "",
+                 addresses);
         peer->m_addr_token_timestamp = current_time;
 
         Shuffle(vAddr.begin(), vAddr.end(), FastRandomContext());
