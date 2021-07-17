@@ -2777,10 +2777,21 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         std::vector<CAddress> vAddrOk;
         int64_t nNow = GetAdjustedTime();
         int64_t nSince = nNow - 10 * 60;
+        size_t i = 0;
         for (CAddress& addr : vAddr)
         {
+            ++i;
             if (interruptMsgProc)
                 return;
+
+            if (addr.IsI2P()) {
+                LogPrint(BCLog::I2P,
+                         "I2P: received gossip %s %u/%u from %s\n",
+                         addr.ToString(),
+                         i,
+                         vAddr.size(),
+                         pfrom.addr.ToString());
+            }
 
             // We only bother storing full nodes, though this may include
             // things which we would not make an outbound connection to, in
