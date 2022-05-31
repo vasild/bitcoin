@@ -135,7 +135,7 @@ void TxOrphanage::LimitOrphans(unsigned int max_orphans)
         EraseTx(m_orphan_list[randompos]->first);
         ++nEvicted;
     }
-    if (nEvicted > 0) LogPrint(BCLog::MEMPOOL, "orphanage overflow, removed %u tx\n", nEvicted);
+    if (nEvicted > 0) LogPrintLevel(BCLog::MEMPOOL, BCLog::Level::Debug, "Orphanage overflow, removed %u transaction(s)\n", nEvicted);
 }
 
 void TxOrphanage::AddChildrenToWorkSet(const CTransaction& tx, std::set<uint256>& orphan_work_set) const
