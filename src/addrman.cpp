@@ -972,7 +972,7 @@ void AddrManImpl::Check() const
 
     const int err{CheckAddrman()};
     if (err) {
-        LogPrintf("ADDRMAN CONSISTENCY CHECK FAILED!!! err=%i\n", err);
+        LogPrintLevel(BCLog::ADDRMAN, BCLog::Level::Error, "ADDRMAN CONSISTENCY CHECK FAILED!!! err=%i\n", err);
         assert(false);
     }
 }
