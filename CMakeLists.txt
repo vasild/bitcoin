@@ -188,11 +188,18 @@ if(WERROR)
     message(FATAL_ERROR "WERROR set but -Werror is not usable.")
   endif()
 
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # -Wreturn-type is broken in GCC for MinGW-w64.
-    # https://sourceforge.net/p/mingw-w64/bugs/306/
-    try_append_cxxflag(error_cxx_flags "-Werror=return-type" "-Wno-error=return-type")
+  # -Wreturn-type is broken in GCC for MinGW-w64.
+  # https://sourceforge.net/p/mingw-w64/bugs/306/
+  set(CMAKE_REQUIRED_FLAGS "-Werror=return-type")
+  check_cxx_source_compiles("
+    #include <cassert>
+    int f() { assert(false); }
+    int main() { return 0; }
+    " WERROR_RETURN_TYPE_WORKS)
+  if(NOT WERROR_RETURN_TYPE_WORKS)
+    try_append_cxxflag(error_cxx_flags "-Wno-error=return-type")
   endif()
+  set(CMAKE_REQUIRED_FLAGS)
 
   separate_arguments(error_cxx_flags)
   add_compile_options(${error_cxx_flags})
