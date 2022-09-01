@@ -70,6 +70,24 @@ option(BUILD_TESTS "Build test" ON)
 
 include(TryAppendCompilerFlag)
 include(TryAppendLinkerFlag)
+
+# Define compiler flags for "Debug" build type
+set(debug_c_flags "")
+try_append_cflag(debug_c_flags "-g3")
+if(debug_c_flags STREQUAL "")
+  try_append_cflag(debug_c_flags "-g") # fallback to -g if -g3 is not available
+endif()
+try_append_cflag(debug_c_flags "-O0")
+try_append_cflag(debug_c_flags "-ftrapv")
+set(CMAKE_C_FLAGS_DEBUG "${debug_c_flags}" CACHE STRING
+  "Flags used by the C compiler during \"Debug\" builds."
+  FORCE
+)
+set(CMAKE_CXX_FLAGS_DEBUG "${debug_c_flags}" CACHE STRING
+  "Flags used by the C++ compiler during \"Debug\" builds."
+  FORCE
+)
+
 # Define custom "RelWithAsserts" build type
 set(release_c_flags "")
 try_append_cflag(release_c_flags "-O2")
@@ -150,6 +168,9 @@ set(CMAKE_SHARED_LINKER_FLAGS_RELHARDENED "${hardened_linker_flags}" CACHE STRIN
   FORCE
 )
 mark_as_advanced(
+  CMAKE_C_FLAGS_DEBUG
+  CMAKE_CXX_FLAGS_DEBUG
+
   CMAKE_C_FLAGS_RELWITHASSERTS
   CMAKE_CXX_FLAGS_RELWITHASSERTS
   CMAKE_EXE_LINKER_FLAGS_RELWITHASSERTS
@@ -169,6 +190,14 @@ set(default_build_type "RelHardened")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to \"${default_build_type}\" as none was specified")
   set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING "Choose the type of build." FORCE)
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  add_definitions(-DABORT_ON_FAILED_ASSUME)
+  add_definitions(-DDEBUG)
+  add_definitions(-DDEBUG_LOCKCONTENTION)
+  add_definitions(-DDEBUG_LOCKORDER)
+  add_definitions(-DRPC_DOC_CHECK)
 endif()
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
