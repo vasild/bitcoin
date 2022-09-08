@@ -865,6 +865,13 @@ public:
     /** Return true if we should disconnect the peer for failing an inactivity check. */
     bool ShouldRunInactivityChecks(const CNode& node, std::chrono::seconds now) const;
 
+    // Network usage per INV/TX
+    std::atomic_uint64_t m_recv_bytes_inv_tx{0};
+    std::atomic_uint64_t m_recv_bytes_inv_tx_redundant{0};
+    std::atomic_uint64_t m_sent_bytes_inv_tx{0};
+    std::atomic_uint64_t m_sent_bytes_inv_tx_redundant{0};
+    std::atomic_uint64_t m_sent_bytes_inv_tx_mempool{0};
+
 private:
     struct ListenSocket {
     public:

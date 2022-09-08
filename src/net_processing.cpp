@@ -2235,6 +2235,16 @@ CTransactionRef PeerManagerImpl::FindTxForGetData(const CNode& peer, const GenTx
         LOCK(cs_main);
         // Otherwise, the transaction must have been announced recently.
         if (State(peer.GetId())->m_recently_announced_invs.contains(gtxid.GetHash())) {
+            uint64_t old_val;
+            uint64_t new_val;
+            do {
+                old_val = m_connman.m_sent_bytes_inv_tx_redundant.load();
+                // The counter could go negative if somebody sends us >1 GETDATA for the same TX,
+                // which we have announced just once. We should actually decrement the counter
+                // just once even we get >1 GETDATA for a given TX, but the below is easier.
+                new_val = old_val > sizeof(CInv) ? old_val - sizeof(CInv) : 0;
+            } while (!m_connman.m_sent_bytes_inv_tx_redundant.compare_exchange_weak(old_val, new_val));
+
             // If it was, it can be relayed from either the mempool...
             if (txinfo.tx) return std::move(txinfo.tx);
             // ... or the relay pool.
@@ -3656,6 +3666,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         const auto current_time{GetTime<std::chrono::microseconds>()};
         uint256* best_block{nullptr};
 
+        bool all_are_tx{true};
+
         for (CInv& inv : vInv) {
             if (interruptMsgProc) return;
 
@@ -3669,6 +3681,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
 
             if (inv.IsMsgBlk()) {
+                all_are_tx = false;
                 const bool fAlreadyHave = AlreadyHaveBlock(inv.hash);
                 LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom.GetId());
 
@@ -3691,14 +3704,23 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 const GenTxid gtxid = ToGenTxid(inv);
                 const bool fAlreadyHave = AlreadyHaveTx(gtxid);
                 LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom.GetId());
+                m_connman.m_recv_bytes_inv_tx += sizeof(CInv);
+                if (fAlreadyHave) {
+                    m_connman.m_recv_bytes_inv_tx_redundant += sizeof(CInv);
+                }
 
                 AddKnownTx(*peer, inv.hash);
                 if (!fAlreadyHave && !m_chainman.ActiveChainstate().IsInitialBlockDownload()) {
                     AddTxAnnouncement(pfrom, gtxid, current_time);
                 }
             } else {
+                all_are_tx = false;
                 LogPrint(BCLog::NET, "Unknown inv type \"%s\" received from peer=%d\n", inv.ToString(), pfrom.GetId());
             }
+        }
+
+        if (all_are_tx) {
+            m_connman.m_recv_bytes_inv_tx += 2 /* size, up to 50000 */ + 3 /* "INV" */;
         }
 
         if (best_block != nullptr) {
@@ -5616,8 +5638,15 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         }
                         tx_relay->m_tx_inventory_known_filter.insert(hash);
                         // Responses to MEMPOOL requests bypass the m_recently_announced_invs filter.
+                        m_connman.m_sent_bytes_inv_tx_mempool += sizeof(CInv);
                         vInv.push_back(inv);
                         if (vInv.size() == MAX_INV_SZ) {
+                            if (std::all_of(vInv.begin(), vInv.end(), [](const CInv& inv) {
+                                    return inv.IsGenTxMsg();
+                                })) {
+                                m_connman.m_sent_bytes_inv_tx_mempool +=
+                                    2 /* size (50000) */ + 3 /* "INV" */;
+                            }
                             m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
                             vInv.clear();
                         }
@@ -5671,6 +5700,11 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         State(pto->GetId())->m_recently_announced_invs.insert(hash);
                         vInv.push_back(inv);
                         nRelayedTransactions++;
+                        m_connman.m_sent_bytes_inv_tx += sizeof(CInv);
+                        // By default assume all sent INV/TX are redundant - the peer already
+                        // knows about that tx. If later we receive GETDATA/TX for that tx from
+                        // that peer then we decrease the redundant bytes counter.
+                        m_connman.m_sent_bytes_inv_tx_redundant += sizeof(CInv);
                         {
                             // Expire old relay messages
                             while (!g_relay_expiration.empty() && g_relay_expiration.front().first < current_time)
@@ -5691,6 +5725,11 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         }
                         if (vInv.size() == MAX_INV_SZ) {
                             m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
+                            if (std::all_of(vInv.begin(), vInv.end(), [](const CInv& inv) {
+                                    return inv.IsGenTxMsg();
+                                })) {
+                                m_connman.m_sent_bytes_inv_tx += 2 /* size (50000) */ + 3 /* "INV" */;
+                            }
                             vInv.clear();
                         }
                         tx_relay->m_tx_inventory_known_filter.insert(hash);
@@ -5705,8 +5744,13 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                     }
                 }
         }
-        if (!vInv.empty())
+        if (!vInv.empty()) {
             m_connman.PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
+            if (std::all_of(
+                    vInv.begin(), vInv.end(), [](const CInv& inv) { return inv.IsGenTxMsg(); })) {
+                m_connman.m_sent_bytes_inv_tx += 2 /* size (50000) */ + 3 /* "INV" */;
+            }
+        }
 
         // Detect whether we're stalling
         if (state.m_stalling_since.count() && state.m_stalling_since < current_time - BLOCK_STALLING_TIMEOUT) {

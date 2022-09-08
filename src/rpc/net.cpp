@@ -517,6 +517,14 @@ static RPCHelpMan getnettotals()
                    {
                        {RPCResult::Type::NUM, "totalbytesrecv", "Total bytes received"},
                        {RPCResult::Type::NUM, "totalbytessent", "Total bytes sent"},
+                       {RPCResult::Type::NUM, "total_inv_tx_redundant_pct", "Received+sent redundant INV/TX vs total traffic (in %)"},
+                       {RPCResult::Type::NUM, "recv_inv_tx_redundant_pct", "Received redundant INV/TX vs received traffic (in %)"},
+                       {RPCResult::Type::NUM, "sent_inv_tx_redundant_pct", "Sent redundant INV/TX vs sent traffic (in %)"},
+                       {RPCResult::Type::NUM, "bytesrecv_inv_tx", "Bytes received for INV/TX messages"},
+                       {RPCResult::Type::NUM, "bytesrecv_inv_tx_redundant", "Redundant bytes received for INV/TX messages"},
+                       {RPCResult::Type::NUM, "bytessent_inv_tx", "Bytes sent for INV/TX messages, excluding replies to MEMPOOL requests"},
+                       {RPCResult::Type::NUM, "bytessent_inv_tx_redundant", "Redundant bytes sent for INV/TX messages; MEMPOOL replies are not considered redundant"},
+                       {RPCResult::Type::NUM, "bytessent_inv_tx_mempool", "Bytes sent for INV/TX messages in response to MEMPOOL requests"},
                        {RPCResult::Type::NUM_TIME, "timemillis", "Current " + UNIX_EPOCH_TIME + " in milliseconds"},
                        {RPCResult::Type::OBJ, "uploadtarget", "",
                        {
@@ -541,6 +549,20 @@ static RPCHelpMan getnettotals()
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("totalbytesrecv", connman.GetTotalBytesRecv());
     obj.pushKV("totalbytessent", connman.GetTotalBytesSent());
+    obj.pushKV("total_inv_tx_redundant_pct",
+               100 *
+                   (connman.m_recv_bytes_inv_tx_redundant.load() +
+                    connman.m_sent_bytes_inv_tx_redundant.load()) /
+                   (connman.GetTotalBytesRecv() + connman.GetTotalBytesSent()));
+    obj.pushKV("recv_inv_tx_redundant_pct",
+               100 * connman.m_recv_bytes_inv_tx_redundant.load() / connman.GetTotalBytesRecv());
+    obj.pushKV("sent_inv_tx_redundant_pct",
+               100 * connman.m_sent_bytes_inv_tx_redundant.load() / connman.GetTotalBytesSent());
+    obj.pushKV("bytesrecv_inv_tx", connman.m_recv_bytes_inv_tx.load());
+    obj.pushKV("bytesrecv_inv_tx_redundant", connman.m_recv_bytes_inv_tx_redundant.load());
+    obj.pushKV("bytessent_inv_tx", connman.m_sent_bytes_inv_tx.load());
+    obj.pushKV("bytessent_inv_tx_redundant", connman.m_sent_bytes_inv_tx_redundant.load());
+    obj.pushKV("bytessent_inv_tx_mempool", connman.m_sent_bytes_inv_tx_mempool.load());
     obj.pushKV("timemillis", GetTimeMillis());
 
     UniValue outboundLimit(UniValue::VOBJ);
