@@ -1310,13 +1310,9 @@ void RPCConsole::unbanSelectedNode()
     QList<QModelIndex> nodes = GUIUtil::getEntryData(ui->banlistWidget, BanTableModel::Address);
     for(int i = 0; i < nodes.count(); i++)
     {
-        // Get currently selected ban address
-        QString strNode = nodes.at(i).data().toString();
-        CSubNet possibleSubnet;
+        CCombinedBan* ban{static_cast<CCombinedBan*>(nodes.at(i).internalPointer())};
 
-        LookupSubNet(strNode.toStdString(), possibleSubnet);
-        if (possibleSubnet.IsValid() && m_node.unban(possibleSubnet))
-        {
+        if (m_node.unban(ban->subnet)) {
             clientModel->getBanTableModel()->refresh();
         }
     }
