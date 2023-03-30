@@ -15,6 +15,7 @@
 #include <random.h>
 #include <serialize.h>
 #include <tinyformat.h>
+#include <util/fs.h>
 #include <util/strencodings.h>
 #include <util/string.h>
 
@@ -31,6 +32,9 @@
  * or with `SERIALIZE_TRANSACTION_NO_WITNESS`.
  */
 static constexpr int ADDRV2_FORMAT = 0x20000000;
+
+/** Prefix for unix domain socket addresses (which are local filesystem paths) */
+const std::string ADDR_PREFIX_UNIX = "unix:";
 
 /**
  * A network type.
@@ -63,6 +67,9 @@ enum Network {
     /// A set of addresses that represent the hash of a string or FQDN. We use
     /// them in AddrMan to keep track of which DNS seeds were used.
     NET_INTERNAL,
+
+    // Local unix domain socket
+    NET_UNIX,
 
     /// Dummy value to indicate the number of NET_* constants.
     NET_MAX,
@@ -136,9 +143,16 @@ protected:
      */
     uint32_t m_scope_id{0};
 
+    /**
+     * Filesystem path for unix domain socket (NET_UNIX)
+     */
+    fs::path m_path;
+
 public:
     CNetAddr();
     explicit CNetAddr(const struct in_addr& ipv4Addr);
+    explicit CNetAddr(const struct in6_addr& pipv6Addr, const uint32_t scope = 0);
+    explicit CNetAddr(const fs::path& path);
     void SetIP(const CNetAddr& ip);
 
     /**
@@ -164,6 +178,7 @@ public:
     bool IsBindAny() const; // INADDR_ANY equivalent
     bool IsIPv4() const;    // IPv4 mapped address (::FFFF:0:0/96, 0.0.0.0/0)
     bool IsIPv6() const;    // IPv6 address (not mapped IPv4, not Tor)
+    bool IsUnix() const;    // Unix domain socket
     bool IsRFC1918() const; // IPv4 private networks (10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12)
     bool IsRFC2544() const; // IPv4 inter-network communications (198.18.0.0/15)
     bool IsRFC6598() const; // IPv4 ISP-level NAT (100.64.0.0/10)
@@ -204,8 +219,6 @@ public:
 
     std::vector<unsigned char> GetAddrBytes() const;
     int GetReachabilityFrom(const CNetAddr* paddrPartner = nullptr) const;
-
-    explicit CNetAddr(const struct in6_addr& pipv6Addr, const uint32_t scope = 0);
     bool GetIn6Addr(struct in6_addr* pipv6Addr) const;
 
     friend bool operator==(const CNetAddr& a, const CNetAddr& b);
@@ -336,6 +349,7 @@ private:
         case NET_CJDNS:
             break;
         case NET_UNROUTABLE:
+        case NET_UNIX:
         case NET_MAX:
             assert(false);
         } // no default case, so the compiler can warn about missing cases
@@ -526,6 +540,7 @@ public:
     CService(const CNetAddr& ip, uint16_t port);
     CService(const struct in_addr& ipv4Addr, uint16_t port);
     explicit CService(const struct sockaddr_in& addr);
+    explicit CService(const fs::path& path);
     uint16_t GetPort() const;
     bool GetSockAddr(struct sockaddr* paddr, socklen_t* addrlen) const;
     bool SetSockAddr(const struct sockaddr* paddr);

@@ -39,7 +39,9 @@ addnode connect to a CJDNS address
 - Test passing unknown -onlynet
 """
 
+import os
 import socket
+import tempfile
 
 from test_framework.socks5 import Socks5Configuration, Socks5Command, Socks5Server, AddressType
 from test_framework.test_framework import BitcoinTestFramework
@@ -60,10 +62,12 @@ NET_CJDNS = "cjdns"
 # Networks returned by RPC getnetworkinfo, defined in src/rpc/net.cpp::GetNetworksInfo()
 NETWORKS = frozenset({NET_IPV4, NET_IPV6, NET_ONION, NET_I2P, NET_CJDNS})
 
+# Use the shortest temp path possible since socket paths have a 92-char limit
+socket_path = os.path.join(tempfile.gettempdir(), "sockpath")
 
 class ProxyTest(BitcoinTestFramework):
     def set_test_params(self):
-        self.num_nodes = 5
+        self.num_nodes = 7
         self.setup_clean_chain = True
 
     def setup_nodes(self):
@@ -89,6 +93,12 @@ class ProxyTest(BitcoinTestFramework):
         else:
             self.log.warning("Testing without local IPv6 support")
 
+        self.conf4 = Socks5Configuration()
+        self.conf4.af = socket.AF_UNIX
+        self.conf4.addr = socket_path
+        self.conf4.unauth = True
+        self.conf4.auth = True
+
         self.serv1 = Socks5Server(self.conf1)
         self.serv1.start()
         self.serv2 = Socks5Server(self.conf2)
@@ -96,6 +106,8 @@ class ProxyTest(BitcoinTestFramework):
         if self.have_ipv6:
             self.serv3 = Socks5Server(self.conf3)
             self.serv3.start()
+        self.serv4 = Socks5Server(self.conf4)
+        self.serv4.start()
 
         # We will not try to connect to this.
         self.i2p_sam = ('127.0.0.1', 7656)
@@ -109,7 +121,9 @@ class ProxyTest(BitcoinTestFramework):
             ['-listen', f'-proxy={self.conf2.addr[0]}:{self.conf2.addr[1]}','-proxyrandomize=1'],
             [],
             ['-listen', f'-proxy={self.conf1.addr[0]}:{self.conf1.addr[1]}','-proxyrandomize=1',
-                '-cjdnsreachable']
+                '-cjdnsreachable'],
+            ['-listen', f'-proxy=unix:{socket_path}'],
+            ['-listen', f'-onion=unix:{socket_path}']
         ]
         if self.have_ipv6:
             args[3] = ['-listen', f'-proxy=[{self.conf3.addr[0]}]:{self.conf3.addr[1]}','-proxyrandomize=0', '-noonion']
@@ -315,6 +329,36 @@ class ProxyTest(BitcoinTestFramework):
         assert_equal(n4['i2p']['reachable'], False)
         assert_equal(n4['cjdns']['reachable'], True)
 
+        n5 = networks_dict(nodes_network_info[5])
+        assert_equal(NETWORKS, n5.keys())
+        for net in NETWORKS:
+            if net == NET_I2P:
+                expected_proxy = ''
+                expected_randomize = False
+            else:
+                expected_proxy = 'unix:' + self.conf4.addr # no port number
+                expected_randomize = True
+            assert_equal(n5[net]['proxy'], expected_proxy)
+            assert_equal(n5[net]['proxy_randomize_credentials'], expected_randomize)
+        assert_equal(n5['onion']['reachable'], True)
+        assert_equal(n5['i2p']['reachable'], False)
+        assert_equal(n5['cjdns']['reachable'], False)
+
+        n6 = networks_dict(nodes_network_info[6])
+        assert_equal(NETWORKS, n6.keys())
+        for net in NETWORKS:
+            if net != NET_ONION:
+                expected_proxy = ''
+                expected_randomize = False
+            else:
+                expected_proxy = 'unix:' + self.conf4.addr # no port number
+                expected_randomize = True
+            assert_equal(n6[net]['proxy'], expected_proxy)
+            assert_equal(n6[net]['proxy_randomize_credentials'], expected_randomize)
+        assert_equal(n6['onion']['reachable'], True)
+        assert_equal(n6['i2p']['reachable'], False)
+        assert_equal(n6['cjdns']['reachable'], False)
+
         self.stop_node(1)
 
         self.log.info("Test passing invalid -proxy hostname raises expected init error")
@@ -383,6 +427,13 @@ class ProxyTest(BitcoinTestFramework):
         msg = "Error: Unknown network specified in -onlynet: 'abc'"
         self.nodes[1].assert_start_raises_init_error(expected_msg=msg)
 
+        self.log.info("Test passing too-long unix path to -proxy raises init error")
+        self.nodes[1].extra_args = [f"-proxy=unix:{'x' * 93}"]
+        msg = f"Error: Invalid -proxy address or hostname: 'unix:{'x' * 93}'"
+        self.nodes[1].assert_start_raises_init_error(expected_msg=msg)
+
+        # Cleanup socket path we established outside the individual test directory.
+        os.unlink(socket_path)
 
 if __name__ == '__main__':
     ProxyTest().main()

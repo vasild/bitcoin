@@ -684,7 +684,9 @@ QString NetworkToQString(Network net)
     case NET_I2P: return QObject::tr("I2P", "network name");
     //: Name of CJDNS network in peer info
     case NET_CJDNS: return QObject::tr("CJDNS", "network name");
-    case NET_INTERNAL: return "Internal";  // should never actually happen
+    // should never actually happen
+    case NET_UNIX: return "Unix";
+    case NET_INTERNAL: return "Internal";
     case NET_MAX: assert(false);
     } // no default case, so the compiler can warn about missing cases
     assert(false);

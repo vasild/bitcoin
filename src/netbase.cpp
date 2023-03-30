@@ -112,6 +112,7 @@ std::string GetNetworkName(enum Network net)
     case NET_I2P: return "i2p";
     case NET_CJDNS: return "cjdns";
     case NET_INTERNAL: return "internal";
+    case NET_UNIX: return "unix";
     case NET_MAX: assert(false);
     } // no default case, so the compiler can warn about missing cases
 
@@ -123,7 +124,7 @@ std::vector<std::string> GetNetworkNames(bool append_unroutable)
     std::vector<std::string> names;
     for (int n = 0; n < NET_MAX; ++n) {
         const enum Network network{static_cast<Network>(n)};
-        if (network == NET_UNROUTABLE || network == NET_INTERNAL) continue;
+        if (network == NET_UNROUTABLE || network == NET_INTERNAL || network == NET_UNIX) continue;
         names.emplace_back(GetNetworkName(network));
     }
     if (append_unroutable) {
@@ -219,6 +220,26 @@ bool Lookup(const std::string& name, CService& addr, uint16_t portDefault, bool 
     if (!ContainsNoNUL(name)) {
         return false;
     }
+
+    // unix domain socket
+    if (name.find(ADDR_PREFIX_UNIX) == 0) {
+        // split off "unix:" prefix
+        std::string str{name.substr(ADDR_PREFIX_UNIX.length())};
+
+        // https://www.man7.org/linux/man-pages/man7/unix.7.html
+        //   "When coding portable applications, keep in mind that some
+        //   implementations have sun_path as short as 92 bytes."
+        if (str.size() > 92)
+            return false;
+
+        fs::path path = fs::PathFromString(str);
+        if (!fs::exists(path))
+            return false;
+
+        addr = CService(path);
+        return true;
+    }
+
     std::vector<CService> vService;
     bool fRet = Lookup(name, vService, portDefault, fAllowLookup, 1, dns_lookup_function);
     if (!fRet)
@@ -391,7 +412,7 @@ bool Socks5(const std::string& strDest, uint16_t port, const ProxyCredentials* a
         return false;
     }
     if (pchRet1[0] != SOCKSVersion::SOCKS5) {
-        return error("Proxy failed to initialize");
+        return error("Proxy failed to initialize.");
     }
     if (pchRet1[1] == SOCKS5Method::USER_PASS && auth) {
         // Perform username/password authentication (as described in RFC1929)
@@ -493,8 +514,10 @@ std::unique_ptr<Sock> CreateSockTCP(const CService& address_family)
     }
 
     // Create a TCP socket in the address family of the specified service.
-    SOCKET hSocket = socket(((struct sockaddr*)&sockaddr)->sa_family, SOCK_STREAM, IPPROTO_TCP);
+    int protocol = address_family.IsUnix() ? 0 : IPPROTO_TCP;
+    SOCKET hSocket = socket(((struct sockaddr*)&sockaddr)->sa_family, SOCK_STREAM, protocol);
     if (hSocket == INVALID_SOCKET) {
+        LogPrintf("Cannot create socket for %s: %s\n", address_family.ToStringAddrPort(), NetworkErrorString(WSAGetLastError()));
         return nullptr;
     }
 

@@ -524,8 +524,10 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
         } else if (use_proxy) {
             sock = CreateSock(proxy.proxy);
             if (!sock) {
+                LogPrintLevel(BCLog::PROXY, BCLog::Level::Debug, "Failed to create socket to proxy: %s\n", proxy.proxy.ToStringAddr());
                 return nullptr;
             }
+            LogPrintLevel(BCLog::PROXY, BCLog::Level::Debug, "Using proxy: %s to connect to %s:%s\n", proxy.proxy.ToStringAddr(), addrConnect.ToStringAddr(), addrConnect.GetPort());
             connected = ConnectThroughProxy(proxy, addrConnect.ToStringAddr(), addrConnect.GetPort(),
                                             *sock, nConnectTimeout, proxyConnectionFailed);
         } else {

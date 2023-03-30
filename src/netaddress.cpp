@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <netaddress.h>
+#include <sys/un.h>
 
 #include <crypto/common.h>
 #include <crypto/sha3.h>
@@ -36,6 +37,7 @@ CNetAddr::BIP155Network CNetAddr::GetBIP155Network() const
     case NET_INTERNAL:   // should have been handled before calling this function
     case NET_UNROUTABLE: // m_net is never and should not be set to NET_UNROUTABLE
     case NET_MAX:        // m_net is never and should not be set to NET_MAX
+    case NET_UNIX:       // m_net may be NET_UNIX but should never be used in BIP155 context
         assert(false);
     } // no default case, so the compiler can warn about missing cases
 
@@ -123,6 +125,7 @@ void CNetAddr::SetIP(const CNetAddr& ipIn)
         assert(ipIn.m_addr.size() == ADDR_INTERNAL_SIZE);
         break;
     case NET_UNROUTABLE:
+    case NET_UNIX:
     case NET_MAX:
         assert(false);
     } // no default case, so the compiler can warn about missing cases
@@ -301,6 +304,12 @@ CNetAddr::CNetAddr(const struct in6_addr& ipv6Addr, const uint32_t scope)
     m_scope_id = scope;
 }
 
+CNetAddr::CNetAddr(const fs::path& path)
+{
+    m_net = NET_UNIX;
+    m_path = path;
+}
+
 bool CNetAddr::IsBindAny() const
 {
     if (!IsIPv4() && !IsIPv6()) {
@@ -312,6 +321,8 @@ bool CNetAddr::IsBindAny() const
 bool CNetAddr::IsIPv4() const { return m_net == NET_IPV4; }
 
 bool CNetAddr::IsIPv6() const { return m_net == NET_IPV6; }
+
+bool CNetAddr::IsUnix() const { return m_net == NET_UNIX; }
 
 bool CNetAddr::IsRFC1918() const
 {
@@ -509,6 +520,7 @@ bool CNetAddr::IsAddrV1Compatible() const
         return false;
     case NET_UNROUTABLE: // m_net is never and should not be set to NET_UNROUTABLE
     case NET_MAX:        // m_net is never and should not be set to NET_MAX
+    case NET_UNIX:
         assert(false);
     } // no default case, so the compiler can warn about missing cases
 
@@ -614,6 +626,8 @@ std::string CNetAddr::ToStringAddr() const
         return IPv6ToString(m_addr, 0);
     case NET_INTERNAL:
         return EncodeBase32(m_addr) + ".internal";
+    case NET_UNIX:
+        return ADDR_PREFIX_UNIX + fs::PathToString(m_path);
     case NET_UNROUTABLE: // m_net is never and should not be set to NET_UNROUTABLE
     case NET_MAX:        // m_net is never and should not be set to NET_MAX
         assert(false);
@@ -791,6 +805,7 @@ int CNetAddr::GetReachabilityFrom(const CNetAddr *paddrPartner) const
         case NET_IPV4:    return REACH_IPV4;
         }
     case NET_UNKNOWN:
+    case NET_UNIX:
     case NET_UNROUTABLE:
     default:
         switch(ourNet) {
@@ -827,6 +842,10 @@ CService::CService(const struct sockaddr_in& addr) : CNetAddr(addr.sin_addr), po
 CService::CService(const struct sockaddr_in6 &addr) : CNetAddr(addr.sin6_addr, addr.sin6_scope_id), port(ntohs(addr.sin6_port))
 {
    assert(addr.sin6_family == AF_INET6);
+}
+
+CService::CService(const fs::path& path) : CNetAddr(path), port(0)
+{
 }
 
 bool CService::SetSockAddr(const struct sockaddr *paddr)
@@ -897,6 +916,15 @@ bool CService::GetSockAddr(struct sockaddr* paddr, socklen_t *addrlen) const
         paddrin6->sin6_port = htons(port);
         return true;
     }
+    if (IsUnix()) {
+        if (*addrlen < (socklen_t)sizeof(struct sockaddr_un))
+            return false;
+        struct sockaddr_un* paddrun = (struct sockaddr_un*)paddr;
+        paddrun->sun_family = AF_UNIX;
+        strcpy(paddrun->sun_path, fs::PathToString(m_path).c_str());
+        *addrlen = strlen(paddrun->sun_path) + sizeof(paddrun);
+        return true;
+    }
     return false;
 }
 
@@ -915,7 +943,10 @@ std::string CService::ToStringAddrPort() const
 {
     const auto port_str = strprintf("%u", port);
 
-    if (IsIPv4() || IsTor() || IsI2P() || IsInternal()) {
+    if (IsUnix()) {
+        // Unix domain sockets don't have ports
+        return ToStringAddr();
+    } else if (IsIPv4() || IsTor() || IsI2P() || IsInternal()) {
         return ToStringAddr() + ":" + port_str;
     } else {
         return "[" + ToStringAddr() + "]:" + port_str;
@@ -1016,6 +1047,7 @@ CSubNet::CSubNet(const CNetAddr& addr) : CSubNet()
         break;
     case NET_INTERNAL:
     case NET_UNROUTABLE:
+    case NET_UNIX:
     case NET_MAX:
         return;
     }
@@ -1042,6 +1074,7 @@ bool CSubNet::Match(const CNetAddr &addr) const
     case NET_INTERNAL:
         return addr == network;
     case NET_UNROUTABLE:
+    case NET_UNIX:
     case NET_MAX:
         return false;
     }
@@ -1081,6 +1114,7 @@ std::string CSubNet::ToString() const
     case NET_CJDNS:
     case NET_INTERNAL:
     case NET_UNROUTABLE:
+    case NET_UNIX:
     case NET_MAX:
         break;
     }
