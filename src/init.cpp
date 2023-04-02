@@ -1284,10 +1284,14 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
             std::string host_out;
             uint16_t port_out{0};
             if (!SplitHostPort(socket_addr, port_out, host_out)) {
+#if HAVE_SOCKADDR_UN
                 // Allow unix domain sockets for -proxy and -onion e.g. unix:/some/file/path
                 if ((port_option != "-proxy" && port_option != "-onion") || socket_addr.find(ADDR_PREFIX_UNIX) != 0) {
                     return InitError(InvalidPortErrMsg(port_option, socket_addr));
                 }
+#else
+                return InitError(InvalidPortErrMsg(port_option, socket_addr));
+#endif
             }
         }
     }

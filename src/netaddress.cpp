@@ -4,7 +4,6 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <netaddress.h>
-#include <sys/un.h>
 
 #include <crypto/common.h>
 #include <crypto/sha3.h>
@@ -20,6 +19,10 @@
 #include <ios>
 #include <iterator>
 #include <tuple>
+
+#if HAVE_SOCKADDR_UN
+#include <sys/un.h>
+#endif
 
 CNetAddr::BIP155Network CNetAddr::GetBIP155Network() const
 {
@@ -916,6 +919,7 @@ bool CService::GetSockAddr(struct sockaddr* paddr, socklen_t *addrlen) const
         paddrin6->sin6_port = htons(port);
         return true;
     }
+#if HAVE_SOCKADDR_UN
     if (IsUnix()) {
         if (*addrlen < (socklen_t)sizeof(struct sockaddr_un))
             return false;
@@ -925,6 +929,7 @@ bool CService::GetSockAddr(struct sockaddr* paddr, socklen_t *addrlen) const
         *addrlen = strlen(paddrun->sun_path) + sizeof(paddrun);
         return true;
     }
+#endif
     return false;
 }
 
