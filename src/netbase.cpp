@@ -40,6 +40,47 @@ bool fNameLookup = DEFAULT_NAME_LOOKUP;
 int g_socks5_recv_timeout = 20 * 1000;
 static std::atomic<bool> interruptSocks5Recv(false);
 
+Proxy::Proxy(const std::string& proxy, uint16_t default_port, bool randomize_credentials)
+{
+}
+
+std::unique_ptr<Sock> Proxy::ConnectToProxy() const
+{
+    return std::make_unique<Sock>();
+}
+
+std::unique_ptr<Sock> Proxy::ConnectToDest(const std::string& dest,
+                                           uint16_t port,
+                                           std::chrono::milliseconds timeout,
+                                           bool& proxy_connection_failed) const
+{
+    return std::make_unique<Sock>();
+}
+
+std::string Proxy::ToString() const
+{
+    return std::string{};
+}
+
+bool Proxy::operator==(const CNetAddr& addr) const
+{
+    return false;
+}
+
+bool Proxy::operator==(const CService& service) const
+{
+    return false;
+}
+
+bool Proxy::IsValid() const
+{
+    return false;
+}
+
+Proxy::Proxy()
+{
+}
+
 std::vector<CNetAddr> WrappedGetAddrInfo(const std::string& name, bool allow_lookup)
 {
     addrinfo ai_hint{};
@@ -675,12 +716,13 @@ bool HaveNameProxy() {
 bool IsProxy(const CNetAddr &addr) {
     LOCK(g_proxyinfo_mutex);
     for (int i = 0; i < NET_MAX; i++) {
-        if (addr == static_cast<CNetAddr>(proxyInfo[i].proxy))
+        if (proxyInfo[i] == addr)
             return true;
     }
     return false;
 }
 
+#if 0
 bool ConnectThroughProxy(const Proxy& proxy, const std::string& strDest, uint16_t port, const Sock& sock, int nTimeout, bool& outProxyConnectionFailed)
 {
     // first connect to proxy server
@@ -703,6 +745,7 @@ bool ConnectThroughProxy(const Proxy& proxy, const std::string& strDest, uint16_
     }
     return true;
 }
+#endif
 
 bool LookupSubNet(const std::string& subnet_str, CSubNet& subnet_out)
 {

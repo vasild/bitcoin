@@ -502,7 +502,7 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
                     LOCK(m_unused_i2p_sessions_mutex);
                     if (m_unused_i2p_sessions.empty()) {
                         i2p_transient_session =
-                            std::make_unique<i2p::sam::Session>(proxy.proxy, &interruptNet);
+                            std::make_unique<i2p::sam::Session>(proxy, &interruptNet);
                     } else {
                         i2p_transient_session.swap(m_unused_i2p_sessions.front());
                         m_unused_i2p_sessions.pop();
@@ -522,14 +522,13 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
                 addr_bind = CAddress{conn.me, NODE_NONE};
             }
         } else if (use_proxy) {
-            sock = CreateSock(proxy.proxy);
+            sock = proxy.ConnectToDest(addrConnect.ToStringAddr(),
+                                       addrConnect.GetPort(),
+                                       std::chrono::milliseconds{nConnectTimeout},
+                                       proxyConnectionFailed);
             if (!sock) {
-                LogPrintLevel(BCLog::PROXY, BCLog::Level::Debug, "Failed to create socket to proxy: %s\n", proxy.proxy.ToStringAddr());
                 return nullptr;
             }
-            LogPrintLevel(BCLog::PROXY, BCLog::Level::Debug, "Using proxy: %s to connect to %s:%s\n", proxy.proxy.ToStringAddr(), addrConnect.ToStringAddr(), addrConnect.GetPort());
-            connected = ConnectThroughProxy(proxy, addrConnect.ToStringAddr(), addrConnect.GetPort(),
-                                            *sock, nConnectTimeout, proxyConnectionFailed);
         } else {
             // no proxy needed (none set for target network)
             sock = CreateSock(addrConnect);
@@ -545,16 +544,14 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
             addrman.Attempt(addrConnect, fCountFailure);
         }
     } else if (pszDest && GetNameProxy(proxy)) {
-        sock = CreateSock(proxy.proxy);
-        if (!sock) {
-            return nullptr;
-        }
         std::string host;
         uint16_t port{default_port};
         SplitHostPort(std::string(pszDest), port, host);
         bool proxyConnectionFailed;
-        connected = ConnectThroughProxy(proxy, host, port, *sock, nConnectTimeout,
-                                        proxyConnectionFailed);
+        sock = proxy.ConnectToDest(host, port, std::chrono::milliseconds{nConnectTimeout}, proxyConnectionFailed);
+        if (!sock) {
+            return nullptr;
+        }
     }
     if (!connected) {
         return nullptr;
@@ -2321,7 +2318,7 @@ bool CConnman::Start(CScheduler& scheduler, const Options& connOptions)
     Proxy i2p_sam;
     if (GetProxy(NET_I2P, i2p_sam) && connOptions.m_i2p_accept_incoming) {
         m_i2p_sam_session = std::make_unique<i2p::sam::Session>(gArgs.GetDataDirNet() / "i2p_private_key",
-                                                                i2p_sam.proxy, &interruptNet);
+                                                                i2p_sam, &interruptNet);
     }
 
     for (const auto& strDest : connOptions.vSeedNodes) {

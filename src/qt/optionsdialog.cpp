@@ -414,13 +414,13 @@ void OptionsDialog::updateDefaultProxyNets()
     bool has_proxy;
 
     has_proxy = model->node().getProxy(NET_IPV4, proxy);
-    ui->proxyReachIPv4->setChecked(has_proxy && proxy.proxy == ui_proxy);
+    ui->proxyReachIPv4->setChecked(has_proxy && proxy == ui_proxy);
 
     has_proxy = model->node().getProxy(NET_IPV6, proxy);
-    ui->proxyReachIPv6->setChecked(has_proxy && proxy.proxy == ui_proxy);
+    ui->proxyReachIPv6->setChecked(has_proxy && proxy == ui_proxy);
 
     has_proxy = model->node().getProxy(NET_ONION, proxy);
-    ui->proxyReachTor->setChecked(has_proxy && proxy.proxy == ui_proxy);
+    ui->proxyReachTor->setChecked(has_proxy && proxy == ui_proxy);
 }
 
 ProxyAddressValidator::ProxyAddressValidator(QObject *parent) :
@@ -432,8 +432,7 @@ QValidator::State ProxyAddressValidator::validate(QString &input, int &pos) cons
 {
     Q_UNUSED(pos);
     // Validate the proxy
-    CService serv(LookupNumeric(input.toStdString(), DEFAULT_GUI_PROXY_PORT));
-    Proxy addrProxy = Proxy(serv, true);
+    const Proxy addrProxy{input.toStdString(), DEFAULT_GUI_PROXY_PORT};
     if (addrProxy.IsValid())
         return QValidator::Acceptable;
 

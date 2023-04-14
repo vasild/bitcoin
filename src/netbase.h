@@ -48,13 +48,63 @@ static inline bool operator&(ConnectionDirection a, ConnectionDirection b) {
 class Proxy
 {
 public:
-    Proxy(): randomize_credentials(false) {}
-    explicit Proxy(const CService &_proxy, bool _randomize_credentials=false): proxy(_proxy), randomize_credentials(_randomize_credentials) {}
+    bool m_randomize_credentials;
 
-    bool IsValid() const { return proxy.IsValid(); }
+    /**
+     * Create a proxy object.
+     * @param[in] proxy Can be either `host[:port]`, `ip_address[:port]` or `unix:/path/to/socket`.
+     * @param[in] default_port Use this port if none is present in `proxy` and it is not an UNIX socket.
+     * @param[in] randomize_credentials If true, then use a random username and password for each
+     * connection to the proxy.
+     * @throws std::runtime_error if `proxy_str` cannot be parsed
+     */
+    explicit Proxy(const std::string& proxy, uint16_t default_port, bool randomize_credentials = false);
 
-    CService proxy;
-    bool randomize_credentials;
+    /**
+     * Connect to the proxy and return the connected socket.
+     */
+    std::unique_ptr<Sock> ConnectToProxy() const;
+
+    /**
+     * Connect to an address via the proxy, assuming it is SOCKS5 proxy.
+     * @param[in] addr Destination to connect to, forwarded to the proxy.
+     * @param[in] port Port to connect to, forwarded to the proxy.
+     * @param[in] timeout Timeout for connecting.
+     * @param[out] proxy_connection_failed If cannot connect and this is set to `true`, then the
+     * failure is due to the proxy itself (not due to `dest` being down).
+     */
+    std::unique_ptr<Sock> ConnectToDest(const std::string& addr,
+                                        uint16_t port,
+                                        std::chrono::milliseconds timeout,
+                                        bool& proxy_connection_failed) const;
+
+    /**
+     * Generate a human readable representation of the proxy.
+     */
+     std::string ToString() const;
+
+    /**
+     * Returns true if the underlying proxy address equals `addr` (ignoring the port).
+     */
+     bool operator==(const CNetAddr& addr) const;
+
+    /**
+     * Returns true if the underlying proxy address equals `service`.
+     */
+     bool operator==(const CService& service) const;
+
+    /**
+     * Returns true the underlying address is valid.
+     */
+     bool IsValid() const;
+
+    /**
+     * Would be nice to remove this (disallow default constructed Proxy and then IsValid() can be removed too).
+     */
+    Proxy();
+
+private:
+    std::variant<CService, fs::path> m_addr;
 };
 
 /** Credentials for proxy authentication */

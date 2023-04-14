@@ -369,20 +369,18 @@ void TorController::get_socks_cb(TorControlConnection& _conn, const TorControlRe
         LogPrintf("tor: Get SOCKS port command failed; error code %d\n", reply.code);
     }
 
-    CService resolved;
-    Assume(!resolved.IsValid());
-    if (!socks_location.empty()) {
-        resolved = LookupNumeric(socks_location, DEFAULT_TOR_SOCKS_PORT);
+    for (const auto& proxy_try : {socks_location, std::string{"127.0.0.1"}}) {
+        if (!proxy_try.empty()) {
+            try {
+                const Proxy onion_proxy{proxy_try, DEFAULT_TOR_SOCKS_PORT, /*randomize_credentials=*/true};
+                SetProxy(NET_ONION, onion_proxy);
+                LogPrintLevel(BCLog::TOR, BCLog::Level::Info, "Configured onion proxy: %s\n", onion_proxy.ToString());
+                break;
+            } catch (const std::runtime_error& e) {
+                LogPrintLevel(BCLog::TOR, BCLog::Level::Warning, "Could not configure onion proxy to %s: %s\n", proxy_try, e.what());
+            }
+        }
     }
-    if (!resolved.IsValid()) {
-        // Fallback to old behaviour
-        resolved = LookupNumeric("127.0.0.1", DEFAULT_TOR_SOCKS_PORT);
-    }
-
-    Assume(resolved.IsValid());
-    LogPrint(BCLog::TOR, "Configuring onion proxy for %s\n", resolved.ToStringAddrPort());
-    Proxy addrOnion = Proxy(resolved, true);
-    SetProxy(NET_ONION, addrOnion);
 
     const auto onlynets = gArgs.GetArgs("-onlynet");
 

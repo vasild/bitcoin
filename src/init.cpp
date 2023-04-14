@@ -1364,12 +1364,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     // -noproxy (or -proxy=0) as well as the empty string can be used to not set a proxy, this is the default
     std::string proxyArg = args.GetArg("-proxy", "");
     if (proxyArg != "" && proxyArg != "0") {
-        CService proxyAddr;
-        if (!Lookup(proxyArg, proxyAddr, 9050, fNameLookup)) {
-            return InitError(strprintf(_("Invalid -proxy address or hostname: '%s'"), proxyArg));
-        }
-
-        Proxy addrProxy = Proxy(proxyAddr, proxyRandomize);
+        Proxy addrProxy{proxyArg, 9050, proxyRandomize};
         if (!addrProxy.IsValid())
             return InitError(strprintf(_("Invalid -proxy address or hostname: '%s'"), proxyArg));
 
@@ -1395,11 +1390,11 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                       "reaching the Tor network is explicitly forbidden: -onion=0"));
             }
         } else {
-            CService addr;
-            if (!Lookup(onionArg, addr, 9050, fNameLookup) || !addr.IsValid()) {
-                return InitError(strprintf(_("Invalid -onion address or hostname: '%s'"), onionArg));
+            try {
+                onion_proxy = Proxy{onionArg, 9050, proxyRandomize};
+            } catch (const std::runtime_error& e) {
+                return InitError(strprintf(_("Invalid -onion address or hostname: '%s': %s"), onionArg, e.what()));
             }
-            onion_proxy = Proxy{addr, proxyRandomize};
         }
     }
 
@@ -1838,11 +1833,11 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
 
     const std::string& i2psam_arg = args.GetArg("-i2psam", "");
     if (!i2psam_arg.empty()) {
-        CService addr;
-        if (!Lookup(i2psam_arg, addr, 7656, fNameLookup) || !addr.IsValid()) {
-            return InitError(strprintf(_("Invalid -i2psam address or hostname: '%s'"), i2psam_arg));
+        try {
+            SetProxy(NET_I2P, Proxy{i2psam_arg, 7656});
+        } catch (const std::runtime_error& e) {
+            return InitError(strprintf(_("Invalid -i2psam address or hostname: '%s': %s"), i2psam_arg, e.what()));
         }
-        SetProxy(NET_I2P, Proxy{addr});
     } else {
         if (args.IsArgSet("-onlynet") && IsReachable(NET_I2P)) {
             return InitError(

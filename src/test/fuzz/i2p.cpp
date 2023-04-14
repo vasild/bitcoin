@@ -28,7 +28,7 @@ FUZZ_TARGET_INIT(i2p, initialize_i2p)
         return std::make_unique<FuzzedSock>(fuzzed_data_provider);
     };
 
-    const CService sam_proxy;
+    const Proxy sam_proxy;
     CThreadInterrupt interrupt;
 
     i2p::sam::Session sess{gArgs.GetDataDirNet() / "fuzzed_i2p_private_key", sam_proxy, &interrupt};
