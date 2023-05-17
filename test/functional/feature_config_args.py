@@ -332,12 +332,11 @@ class ConfArgsTest(BitcoinTestFramework):
             "private broadcast needs to open new connections to randomly chosen "
             "Tor or I2P peers" :
             # -onion= makes the Tor network reachable
-            ["-privatebroadcast", "-walletbroadcast=0", "-connect=127.0.0.1:8333", "-onion=127.0.0.1:9050"],
-
-            "The wallet currently does not support private transactions broadcast. "
-            "Set -walletbroadcast=0 or -privatebroadcast=0 to proceed.":
-            ["-privatebroadcast", "-walletbroadcast"]
+            ["-privatebroadcast", "-walletbroadcast=0", "-connect=127.0.0.1:8333", "-onion=127.0.0.1:9050"]
         }
+        if self.is_wallet_compiled():
+            args_errors["The wallet currently does not support private transactions broadcast. "
+                        "Set -walletbroadcast=0 or -privatebroadcast=0 to proceed."] = ["-privatebroadcast", "-walletbroadcast"]
         for msg, args in args_errors.items():
             self.nodes[0].assert_start_raises_init_error(extra_args=args, expected_msg=f"Error: {msg}")
 
