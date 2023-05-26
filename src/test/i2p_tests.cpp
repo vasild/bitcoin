@@ -25,7 +25,7 @@ BOOST_AUTO_TEST_CASE(unlimited_recv)
     auto CreateSockOrig = CreateSock;
 
     // Mock CreateSock() to create MockSock.
-    CreateSock = [](const CService&) {
+    CreateSock = [](const sa_family_t&) {
         return std::make_unique<StaticContentsSock>(std::string(i2p::sam::MAX_MSG_SIZE + 1, 'a'));
     };
 

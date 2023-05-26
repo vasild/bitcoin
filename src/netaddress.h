@@ -529,6 +529,7 @@ public:
     uint16_t GetPort() const;
     bool GetSockAddr(struct sockaddr* paddr, socklen_t* addrlen) const;
     bool SetSockAddr(const struct sockaddr* paddr);
+    [[nodiscard]] sa_family_t GetSAFamily() const;
     friend bool operator==(const CService& a, const CService& b);
     friend bool operator!=(const CService& a, const CService& b) { return !(a == b); }
     friend bool operator<(const CService& a, const CService& b);

@@ -24,7 +24,7 @@ FUZZ_TARGET_INIT(i2p, initialize_i2p)
 
     // Mock CreateSock() to create FuzzedSock.
     auto CreateSockOrig = CreateSock;
-    CreateSock = [&fuzzed_data_provider](const CService&) {
+    CreateSock = [&fuzzed_data_provider](const sa_family_t&) {
         return std::make_unique<FuzzedSock>(fuzzed_data_provider);
     };
 
