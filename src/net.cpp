@@ -511,11 +511,11 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
                 addr_bind = CAddress{conn.me, NODE_NONE};
             }
         } else if (use_proxy) {
-            sock = CreateSock(proxy.proxy.GetSAFamily());
+            sock = CreateSock(proxy.GetFamily());
             if (!sock) {
                 return nullptr;
             }
-            LogPrintLevel(BCLog::PROXY, BCLog::Level::Debug, "Using proxy: %s to connect to %s:%s\n", proxy.proxy.ToStringAddrPort(), addrConnect.ToStringAddr(), addrConnect.GetPort());
+            LogPrintLevel(BCLog::PROXY, BCLog::Level::Debug, "Using proxy: %s to connect to %s:%s\n", proxy.ToString(), addrConnect.ToStringAddr(), addrConnect.GetPort());
             connected = ConnectThroughProxy(proxy, addrConnect.ToStringAddr(), addrConnect.GetPort(),
                                             *sock, nConnectTimeout, proxyConnectionFailed);
         } else {
@@ -533,7 +533,7 @@ CNode* CConnman::ConnectNode(CAddress addrConnect, const char *pszDest, bool fCo
             addrman.Attempt(addrConnect, fCountFailure);
         }
     } else if (pszDest && GetNameProxy(proxy)) {
-        sock = CreateSock(proxy.proxy.GetSAFamily());
+        sock = CreateSock(proxy.GetFamily());
         if (!sock) {
             return nullptr;
         }
