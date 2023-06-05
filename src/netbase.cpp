@@ -660,7 +660,7 @@ bool ConnectThroughProxy(const Proxy& proxy, const std::string& strDest, uint16_
         return false;
     }
     // do socks negotiation
-    if (proxy.randomize_credentials) {
+    if (proxy.m_randomize_credentials) {
         ProxyCredentials random_auth;
         static std::atomic_int counter(0);
         random_auth.username = random_auth.password = strprintf("%i", counter++);
