@@ -114,7 +114,7 @@ static CNetAddr DestB64ToAddr(const std::string& dest)
 namespace sam {
 
 Session::Session(const fs::path& private_key_file,
-                 const CService& control_host,
+                 const Proxy& control_host,
                  CThreadInterrupt* interrupt)
     : m_private_key_file{private_key_file},
       m_control_host{control_host},
@@ -124,7 +124,7 @@ Session::Session(const fs::path& private_key_file,
 {
 }
 
-Session::Session(const CService& control_host, CThreadInterrupt* interrupt)
+Session::Session(const Proxy& control_host, CThreadInterrupt* interrupt)
     : m_control_host{control_host},
       m_interrupt{interrupt},
       m_control_sock{std::make_unique<Sock>(INVALID_SOCKET)},
@@ -295,14 +295,9 @@ Session::Reply Session::SendRequestAndGetReply(const Sock& sock,
 
 std::unique_ptr<Sock> Session::Hello() const
 {
-    auto sock = CreateSock(m_control_host.GetSAFamily());
-
+    auto sock = m_control_host.ConnectToProxy();
     if (!sock) {
-        throw std::runtime_error("Cannot create socket");
-    }
-
-    if (!ConnectSocketDirectly(m_control_host, *sock, nConnectTimeout, true)) {
-        throw std::runtime_error(strprintf("Cannot connect to %s", m_control_host.ToStringAddrPort()));
+        throw std::runtime_error(strprintf("Cannot connect to the proxy %s", m_control_host.ToString()));
     }
 
     SendRequestAndGetReply(*sock, "HELLO VERSION MIN=3.1 MAX=3.1");
@@ -371,7 +366,7 @@ void Session::CreateIfNotCreatedAlready()
     const auto session_type = m_transient ? "transient" : "persistent";
     const auto session_id = GetRandHash().GetHex().substr(0, 10); // full is overkill, too verbose in the logs
 
-    Log("Creating %s SAM session %s with %s", session_type, session_id, m_control_host.ToStringAddrPort());
+    Log("Creating %s SAM session %s with %s", session_type, session_id, m_control_host.ToString());
 
     auto sock = Hello();
 

@@ -413,13 +413,13 @@ void OptionsDialog::updateDefaultProxyNets()
     bool has_proxy;
 
     has_proxy = model->node().getProxy(NET_IPV4, proxy);
-    ui->proxyReachIPv4->setChecked(has_proxy && proxy.proxy == ui_proxy);
+    ui->proxyReachIPv4->setChecked(has_proxy && proxy == ui_proxy);
 
     has_proxy = model->node().getProxy(NET_IPV6, proxy);
-    ui->proxyReachIPv6->setChecked(has_proxy && proxy.proxy == ui_proxy);
+    ui->proxyReachIPv6->setChecked(has_proxy && proxy == ui_proxy);
 
     has_proxy = model->node().getProxy(NET_ONION, proxy);
-    ui->proxyReachTor->setChecked(has_proxy && proxy.proxy == ui_proxy);
+    ui->proxyReachTor->setChecked(has_proxy && proxy == ui_proxy);
 }
 
 ProxyAddressValidator::ProxyAddressValidator(QObject *parent) :
