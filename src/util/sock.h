@@ -233,12 +233,28 @@ public:
     /**
      * Send the given data, retrying on transient errors.
      * @param[in] data Data to send.
+     * @param[in] len Length of the data in bytes.
      * @param[in] timeout Timeout for the entire operation.
      * @param[in] interrupt If this is signaled then the operation is canceled.
      * @throws std::runtime_error if the operation cannot be completed. In this case only some of
      * the data will be written to the socket.
      */
+    virtual void SendComplete(const void* data,
+                              size_t len,
+                              std::chrono::milliseconds timeout,
+                              CThreadInterrupt& interrupt) const;
+
+    /**
+     * Convenience method, equivalent to `SendComplete(data.data(), data.size(), timeout, interrupt)`.
+     */
     virtual void SendComplete(const std::string& data,
+                              std::chrono::milliseconds timeout,
+                              CThreadInterrupt& interrupt) const;
+
+    /**
+     * Convenience method, equivalent to `SendComplete(data.data(), data.size(), timeout, interrupt)`.
+     */
+    virtual void SendComplete(const std::vector<uint8_t>& data,
                               std::chrono::milliseconds timeout,
                               CThreadInterrupt& interrupt) const;
 

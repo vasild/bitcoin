@@ -251,7 +251,8 @@ bool Sock::WaitMany(std::chrono::milliseconds timeout, EventsPerSock& events_per
 #endif /* USE_POLL */
 }
 
-void Sock::SendComplete(const std::string& data,
+void Sock::SendComplete(const void* data,
+                        size_t len,
                         std::chrono::milliseconds timeout,
                         CThreadInterrupt& interrupt) const
 {
@@ -259,11 +260,11 @@ void Sock::SendComplete(const std::string& data,
     size_t sent{0};
 
     for (;;) {
-        const ssize_t ret{Send(data.data() + sent, data.size() - sent, MSG_NOSIGNAL)};
+        const ssize_t ret{Send(static_cast<const uint8_t*>(data) + sent, len - sent, MSG_NOSIGNAL)};
 
         if (ret > 0) {
             sent += static_cast<size_t>(ret);
-            if (sent == data.size()) {
+            if (sent == len) {
                 break;
             }
         } else {
@@ -277,12 +278,12 @@ void Sock::SendComplete(const std::string& data,
 
         if (now >= deadline) {
             throw std::runtime_error(strprintf(
-                "Send timeout (sent only %u of %u bytes before that)", sent, data.size()));
+                "Send timeout (sent only %u of %u bytes before that)", sent, len));
         }
 
         if (interrupt) {
             throw std::runtime_error(strprintf(
-                "Send interrupted (sent only %u of %u bytes before that)", sent, data.size()));
+                "Send interrupted (sent only %u of %u bytes before that)", sent, len));
         }
 
         // Wait for a short while (or the socket to become ready for sending) before retrying
@@ -290,6 +291,20 @@ void Sock::SendComplete(const std::string& data,
         const auto wait_time = std::min(deadline - now, std::chrono::milliseconds{MAX_WAIT_FOR_IO});
         (void)Wait(wait_time, SEND);
     }
+}
+
+void Sock::SendComplete(const std::string& data,
+                        std::chrono::milliseconds timeout,
+                        CThreadInterrupt& interrupt) const
+{
+    SendComplete(data.data(), data.size(), timeout, interrupt);
+}
+
+void Sock::SendComplete(const std::vector<uint8_t>& data,
+                        std::chrono::milliseconds timeout,
+                        CThreadInterrupt& interrupt) const
+{
+    SendComplete(data.data(), data.size(), timeout, interrupt);
 }
 
 std::string Sock::RecvUntilTerminator(uint8_t terminator,
