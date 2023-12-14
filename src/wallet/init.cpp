@@ -119,6 +119,12 @@ bool WalletInit::ParameterInteraction() const
         LogPrintf("%s: parameter interaction: -blocksonly=1 -> setting -walletbroadcast=0\n", __func__);
     }
 
+    if (gArgs.GetBoolArg("-privatebroadcast", DEFAULT_PRIVATE_BROADCAST) &&
+        gArgs.GetBoolArg("-walletbroadcast", DEFAULT_WALLETBROADCAST)) {
+        return InitError(_("The wallet currently does not support private transactions broadcast. "
+                           "Set -walletbroadcast=0 or -privatebroadcast=0 to proceed."));
+    }
+
     return true;
 }
 
