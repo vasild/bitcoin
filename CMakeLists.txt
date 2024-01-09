@@ -50,6 +50,11 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/module)
 option(BUILD_DAEMON "Build bitcoind executable." ON)
 option(THREADLOCAL "Enable features that depend on the C++ thread_local keyword (currently just thread names in debug logs)." ON)
 
+# TODO: These tri-state options will be removed and most features
+#       will become opt-in by default before merging into master.
+include(TristateOption)
+tristate_option(CCACHE "Use ccache for compiling." "if ccache is found." AUTO)
+
 set(configure_warnings)
 
 include(CheckPIESupported)
@@ -163,6 +168,8 @@ include(cmake/leveldb.cmake)
 include(cmake/minisketch.cmake)
 include(cmake/secp256k1.cmake)
 
+include(cmake/optional.cmake)
+
 if(CMAKE_CROSSCOMPILING)
   target_compile_definitions(core_base_interface INTERFACE ${DEPENDS_COMPILE_DEFINITIONS})
   target_compile_definitions(core_depends_release_interface INTERFACE ${DEPENDS_COMPILE_DEFINITIONS_RELWITHDEBINFO})
@@ -221,6 +228,7 @@ else()
   message(" - LDFLAGS for executables ............ ${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
   message(" - LDFLAGS for shared libraries ....... ${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")
 endif()
+message("Use ccache for compiling .............. ${CCACHE}")
 message("\n")
 if(configure_warnings)
     message("  ******\n")
