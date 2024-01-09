@@ -107,6 +107,7 @@ target_link_libraries(core_base_interface INTERFACE
 target_link_libraries(core_interface INTERFACE core_base_interface)
 
 include(TryAppendCXXFlags)
+include(TryAppendLinkerFlag)
 
 if(WIN32)
   #[=[
@@ -162,6 +163,10 @@ if(WIN32)
     # Avoid the use of aligned vector instructions when building for Windows.
     # See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=54412.
     try_append_cxx_flags("-Wa,-muse-unaligned-vector-move" TARGET core_base_interface SKIP_LINK)
+    try_append_linker_flag("-static" TARGET core_base_interface)
+    # We require Windows 7 (NT 6.1) or later.
+    try_append_linker_flag("-Wl,--major-subsystem-version,6" TARGET core_base_interface)
+    try_append_linker_flag("-Wl,--minor-subsystem-version,1" TARGET core_base_interface)
   endif()
 endif()
 
@@ -177,6 +182,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   target_compile_definitions(core_base_interface INTERFACE
     MAC_OSX
   )
+  # These flags are specific to ld64, and may cause issues with other linkers.
+  # For example: GNU ld will interpret -dead_strip as -de and then try and use
+  # "ad_strip" as the symbol for the entry point.
+  try_append_linker_flag("-Wl,-dead_strip" TARGET core_base_interface)
+  try_append_linker_flag("-Wl,-dead_strip_dylibs" TARGET core_base_interface)
+  try_append_linker_flag("-Wl,-headerpad_max_install_names" TARGET core_base_interface)
 endif()
 
 include(AddThreadsIfNeeded)
