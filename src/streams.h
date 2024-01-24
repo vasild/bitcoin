@@ -6,10 +6,12 @@
 #ifndef BITCOIN_STREAMS_H
 #define BITCOIN_STREAMS_H
 
+#include <logging.h>
 #include <serialize.h>
 #include <span.h>
 #include <support/allocators/zeroafterfree.h>
 #include <util/overflow.h>
+#include <util/syserror.h>
 
 #include <algorithm>
 #include <assert.h>
@@ -383,7 +385,16 @@ public:
  *
  * Will automatically close the file when it goes out of scope if not null.
  * If you're returning the file pointer, return file.release().
- * If you need to close the file early, use file.fclose() instead of fclose(file).
+ * If you need to close the file early, use autofile.fclose() instead of fclose(underlying_FILE).
+ *
+ * @note If the file has been written to, then avoid relying on the destructor
+ * to close the file. It is better to instead explicitly close the file using
+ * the `fclose()` method, check if it returns an error and treat such an error
+ * as if the `write()` method has failed. The OS's `fclose(3)` may fail to flush
+ * to disk data that has been previously written, rendering the file corrupt.
+ * There is no way to signal a failure from the destructor to the caller, thus
+ * this destructor will try to close the file and if an error occurs, it will
+ * log a message and terminate the program.
  */
 class AutoFile
 {
@@ -394,7 +405,13 @@ protected:
 public:
     explicit AutoFile(std::FILE* file, std::vector<std::byte> data_xor={}) : m_file{file}, m_xor{std::move(data_xor)} {}
 
-    ~AutoFile() { fclose(); }
+    ~AutoFile()
+    {
+        if (fclose() != 0) {
+            LogPrintLevel(BCLog::ALL, BCLog::Level::Error, "Error closing file: %s\n", SysErrorString(errno));
+            std::abort();
+        }
+    }
 
     // Disallow copies
     AutoFile(const AutoFile&) = delete;
@@ -402,7 +419,7 @@ public:
 
     bool feof() const { return std::feof(m_file); }
 
-    int fclose()
+    [[nodiscard]] int fclose()
     {
         if (auto rel{release()}) return std::fclose(rel);
         return 0;
