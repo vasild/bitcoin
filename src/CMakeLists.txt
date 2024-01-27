@@ -3,6 +3,7 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 include(GNUInstallDirs)
+include(AddWindowsResources)
 
 configure_file(${CMAKE_SOURCE_DIR}/cmake/bitcoin-config.h.in config/bitcoin-config.h @ONLY)
 add_compile_definitions(HAVE_CONFIG_H)
@@ -137,6 +138,7 @@ if(ENABLE_WALLET)
       init/bitcoin-wallet.cpp
       wallet/wallettool.cpp
     )
+    add_windows_resources(bitcoin-wallet bitcoin-wallet-res.rc)
     target_link_libraries(bitcoin-wallet
       core_interface
       bitcoin_wallet
@@ -267,6 +269,7 @@ if(BUILD_DAEMON)
     bitcoind.cpp
     init/bitcoind.cpp
   )
+  add_windows_resources(bitcoind bitcoind-res.rc)
   target_link_libraries(bitcoind
     core_interface
     bitcoin_node
@@ -290,6 +293,7 @@ target_link_libraries(bitcoin_cli
 # Bitcoin Core RPC client
 if(BUILD_CLI)
   add_executable(bitcoin-cli bitcoin-cli.cpp)
+  add_windows_resources(bitcoin-cli bitcoin-cli-res.rc)
   target_link_libraries(bitcoin-cli
     core_interface
     bitcoin_cli
@@ -303,6 +307,7 @@ endif()
 
 if(BUILD_TX)
   add_executable(bitcoin-tx bitcoin-tx.cpp)
+  add_windows_resources(bitcoin-tx bitcoin-tx-res.rc)
   target_link_libraries(bitcoin-tx
     core_interface
     bitcoin_common
@@ -315,6 +320,7 @@ endif()
 
 if(BUILD_UTIL)
   add_executable(bitcoin-util bitcoin-util.cpp)
+  add_windows_resources(bitcoin-util bitcoin-util-res.rc)
   target_link_libraries(bitcoin-util
     core_interface
     bitcoin_common
