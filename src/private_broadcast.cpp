@@ -81,6 +81,19 @@ bool PrivateBroadcast::FinishBroadcast(const NodeId& nodeid, bool confirmed_by_n
     return true;
 }
 
+std::vector<CTransactionRef> PrivateBroadcast::GetStale() const EXCLUSIVE_LOCKS_REQUIRED(!m_mutex)
+{
+    LOCK(m_mutex);
+    const auto stale_time = GetTime<std::chrono::microseconds>() - 1min;
+    std::vector<CTransactionRef> stale;
+    for (const auto& [txid, tx_with_priority] : m_by_txid) {
+        if (tx_with_priority.priority.last_broadcasted < stale_time) {
+            stale.push_back(tx_with_priority.tx);
+        }
+    }
+    return stale;
+}
+
 bool PrivateBroadcast::Priority::operator<(const Priority& other) const
 {
     if (num_broadcasted < other.num_broadcasted) {
