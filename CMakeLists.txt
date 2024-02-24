@@ -76,6 +76,8 @@ tristate_option(WITH_USDT
   "if sys/sdt.h is found."
   AUTO
 )
+cmake_dependent_option(WITH_EXTERNAL_SIGNER "Enable external signer support." ON "NOT WIN32" OFF)
+set(ENABLE_EXTERNAL_SIGNER ${WITH_EXTERNAL_SIGNER})
 tristate_option(WITH_QRENCODE "Enable QR code support." "if libqrencode is found." AUTO)
 
 option(BUILD_TESTS "Build test_bitcoin executable." ON)
@@ -443,6 +445,7 @@ message("  GUI ................................. ${WITH_GUI}")
 if(WITH_GUI)
   message("  QR code (GUI) ....................... ${WITH_QRENCODE}")
 endif()
+message("  external signer ..................... ${WITH_EXTERNAL_SIGNER}")
 message("  NAT-PMP ............................. ${WITH_NATPMP}")
 message("  UPnP ................................ ${WITH_MINIUPNPC}")
 message("  ZeroMQ .............................. ${WITH_ZMQ}")
