@@ -78,6 +78,7 @@ tristate_option(WITH_USDT
 )
 
 option(BUILD_TESTS "Build test_bitcoin executable." ON)
+cmake_dependent_option(BUILD_GUI_TESTS "Build test_bitcoin-qt executable." ON "BUILD_TESTS" OFF)
 option(BUILD_BENCH "Build bench_bitcoin executable." ON)
 option(INSTALL_MAN "Install man pages." ON)
 
@@ -409,6 +410,7 @@ message("  ZeroMQ .............................. ${WITH_ZMQ}")
 message("  USDT tracing ........................ ${WITH_USDT}")
 message("Tests:")
 message("  test_bitcoin ........................ ${BUILD_TESTS}")
+message("  test_bitcoin-qt ..................... ${BUILD_GUI_TESTS}")
 message("  bench_bitcoin ....................... ${BUILD_BENCH}")
 message("")
 if(CMAKE_CROSSCOMPILING)
