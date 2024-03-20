@@ -3,8 +3,8 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 if(NOT MSVC)
-  include(CrossPkgConfig)
-  cross_pkg_check_modules(PC_MiniUPnPc QUIET miniupnpc)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(PC_MiniUPnPc QUIET miniupnpc)
 endif()
 
 find_path(MiniUPnPc_INCLUDE_DIR

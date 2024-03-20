@@ -140,8 +140,8 @@ if(WITH_GUI AND WITH_QRENCODE)
     #       the build error in its libiconv dependency.
     #       See: https://github.com/microsoft/vcpkg/issues/36924.
   else()
-    include(CrossPkgConfig)
-    cross_pkg_check_modules(libqrencode IMPORTED_TARGET libqrencode)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(libqrencode IMPORTED_TARGET libqrencode)
   endif()
   if(TARGET PkgConfig::libqrencode)
     set_target_properties(PkgConfig::libqrencode PROPERTIES

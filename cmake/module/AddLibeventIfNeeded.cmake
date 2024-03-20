@@ -41,23 +41,17 @@ function(add_libevent_if_needed)
     return()
   endif()
 
-  include(CrossPkgConfig)
-  cross_pkg_check_modules(libevent
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(libevent
     REQUIRED IMPORTED_TARGET GLOBAL
     libevent>=${libevent_minimum_version}
   )
-  if(MINGW)
-    target_link_libraries(PkgConfig::libevent INTERFACE
-      iphlpapi
-      ws2_32
-    )
-  endif()
 
   check_evhttp_connection_get_peer(PkgConfig::libevent)
   add_library(libevent::libevent ALIAS PkgConfig::libevent)
 
   if(NOT WIN32)
-    cross_pkg_check_modules(libevent_pthreads
+    pkg_check_modules(libevent_pthreads
       REQUIRED IMPORTED_TARGET GLOBAL
       libevent_pthreads>=${libevent_minimum_version}
     )
