@@ -106,6 +106,8 @@ target_link_libraries(core_base_interface INTERFACE
 )
 target_link_libraries(core_interface INTERFACE core_base_interface)
 
+include(TryAppendCXXFlags)
+
 if(WIN32)
   #[=[
   This build system supports two ways to build binaries for Windows.
@@ -157,6 +159,9 @@ if(WIN32)
       _WINDOWS
       _MT
     )
+    # Avoid the use of aligned vector instructions when building for Windows.
+    # See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=54412.
+    try_append_cxx_flags("-Wa,-muse-unaligned-vector-move" TARGET core_base_interface SKIP_LINK)
   endif()
 endif()
 
