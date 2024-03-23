@@ -63,6 +63,7 @@ include(CMakeDependentOption)
 cmake_dependent_option(BUILD_WALLET_TOOL "Build bitcoin-wallet tool." ON "ENABLE_WALLET" OFF)
 
 option(THREADLOCAL "Enable features that depend on the C++ thread_local keyword (currently just thread names in debug logs)." ON)
+option(HARDENING "Attempt to harden the resulting executables." ON)
 
 tristate_option(CCACHE "Use ccache for compiling." "if ccache is found." AUTO)
 tristate_option(WITH_NATPMP "Enable NAT-PMP." "if libnatpmp is found." AUTO)
@@ -284,6 +285,48 @@ try_append_cxx_flags("-fno-extended-identifiers" TARGET core_base_interface SKIP
 # -fstack-reuse=none for all gcc builds. (Only gcc understands this flag).
 try_append_cxx_flags("-fstack-reuse=none" TARGET core_base_interface)
 
+if(HARDENING)
+  add_library(hardening_interface INTERFACE)
+  target_link_libraries(core_base_interface INTERFACE hardening_interface)
+  if(MSVC)
+    try_append_linker_flag("/DYNAMICBASE" TARGET hardening_interface)
+    try_append_linker_flag("/HIGHENTROPYVA" TARGET hardening_interface)
+    try_append_linker_flag("/NXCOMPAT" TARGET hardening_interface)
+  else()
+    target_compile_options(hardening_interface INTERFACE
+      $<$<NOT:$<CONFIG:Debug>>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3>
+    )
+
+    try_append_cxx_flags("-Wstack-protector" TARGET hardening_interface SKIP_LINK)
+    try_append_cxx_flags("-fstack-protector-all" TARGET hardening_interface)
+    try_append_cxx_flags("-fcf-protection=full" TARGET hardening_interface)
+
+    if(MINGW)
+      # stack-clash-protection doesn't compile with GCC 10 and earlier.
+      # In any case, it is a no-op for Windows.
+      # See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=90458 for more details.
+    else()
+      try_append_cxx_flags("-fstack-clash-protection" TARGET hardening_interface)
+    endif()
+
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+      try_append_cxx_flags("-mbranch-protection=bti" TARGET hardening_interface)
+    endif()
+
+    try_append_linker_flag("-Wl,--enable-reloc-section" TARGET hardening_interface)
+    try_append_linker_flag("-Wl,--dynamicbase" TARGET hardening_interface)
+    try_append_linker_flag("-Wl,--nxcompat" TARGET hardening_interface)
+    try_append_linker_flag("-Wl,--high-entropy-va" TARGET hardening_interface)
+    try_append_linker_flag("-Wl,-z,relro" TARGET hardening_interface)
+    try_append_linker_flag("-Wl,-z,now" TARGET hardening_interface)
+    try_append_linker_flag("-Wl,-z,separate-code" TARGET hardening_interface)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      try_append_linker_flag("-Wl,-bind_at_load" TARGET hardening_interface)
+      try_append_linker_flag("-Wl,-fixup_chains" TARGET hardening_interface)
+    endif()
+  endif()
+endif()
+
 find_package(Python3 3.9 COMPONENTS Interpreter)
 if(Python3_EXECUTABLE)
   set(PYTHON_COMMAND ${Python3_EXECUTABLE})
@@ -361,6 +404,7 @@ message("Common link options ................... ${common_link_options}")
 message("Linker flags for executables .......... ${CMAKE_EXE_LINKER_FLAGS}")
 message("Linker flags for shared libraries ..... ${CMAKE_SHARED_LINKER_FLAGS}")
 print_config_flags()
+message("Attempt to harden executables ......... ${HARDENING}")
 message("Use ccache for compiling .............. ${CCACHE}")
 message("\n")
 if(configure_warnings)
