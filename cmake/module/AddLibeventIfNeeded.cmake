@@ -41,8 +41,8 @@ function(add_libevent_if_needed)
     return()
   endif()
 
-  find_package(PkgConfig)
-  pkg_check_modules(libevent
+  include(CrossPkgConfig)
+  cross_pkg_check_modules(libevent
     REQUIRED IMPORTED_TARGET GLOBAL
     libevent>=${libevent_minimum_version}
   )
@@ -57,7 +57,7 @@ function(add_libevent_if_needed)
   add_library(libevent::libevent ALIAS PkgConfig::libevent)
 
   if(NOT WIN32)
-    pkg_check_modules(libevent_pthreads
+    cross_pkg_check_modules(libevent_pthreads
       REQUIRED IMPORTED_TARGET GLOBAL
       libevent_pthreads>=${libevent_minimum_version}
     )
