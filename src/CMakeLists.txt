@@ -68,7 +68,7 @@ target_link_libraries(bitcoin_consensus
 )
 
 if(WITH_ZMQ)
-  add_subdirectory(zmq EXCLUDE_FROM_ALL)
+  add_subdirectory(zmq)
 endif()
 
 # Home for common functionality shared by different executables and libraries.
