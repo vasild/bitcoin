@@ -1,6 +1,6 @@
 # macOS Build Guide
 
-**Updated for MacOS [11.2](https://www.apple.com/macos/big-sur/)**
+**Updated for MacOS [14.4](https://www.apple.com/macos/sonoma/)**
 
 This guide describes how to build bitcoind, command-line utilities, and GUI on macOS
 
@@ -48,7 +48,7 @@ See [dependencies.md](dependencies.md) for a complete overview.
 To install, run the following from your terminal:
 
 ``` bash
-brew install automake libtool boost pkg-config libevent
+brew install cmake boost pkg-config libevent
 ```
 
 ### 4. Clone Bitcoin repository
@@ -163,7 +163,7 @@ brew install python
 
 #### Deploy Dependencies
 
-You can deploy a `.zip` containing the Bitcoin Core application using `make deploy`.
+You can [deploy](#3-deploy-optional) a `.zip` containing the Bitcoin Core application.
 It is required that you have `python` installed.
 
 ## Building Bitcoin Core
@@ -179,8 +179,9 @@ If `sqlite` is installed, then descriptor wallet support will also be built.
 Additionally, this explicitly disables the GUI.
 
 ``` bash
-./autogen.sh
-./configure --with-gui=no
+mkdir build
+cd build
+cmake -S .. -DWITH_GUI=OFF
 ```
 
 ##### Wallet (only SQlite) and GUI Support:
@@ -191,15 +192,17 @@ If `sqlite` is installed then descriptor wallet functionality will be built.
 If `sqlite` is not installed, then wallet functionality will be disabled.
 
 ``` bash
-./autogen.sh
-./configure --without-bdb --with-gui=yes
+mkdir build
+cd build
+cmake -S .. -DWITH_BDB=OFF -DWITH_GUI=Qt5
 ```
 
 ##### No Wallet or GUI
 
 ``` bash
-./autogen.sh
-./configure --without-wallet --with-gui=no
+mkdir build
+cd build
+cmake -S .. -DENABLE_WALLET=OFF -DWITH_GUI=OFF
 ```
 
 ##### Further Configuration
@@ -208,7 +211,7 @@ You may want to dig deeper into the configuration options to achieve your desire
 Examine the output of the following command for a full list of configuration options:
 
 ``` bash
-./configure -help
+cmake -S .. -LH
 ```
 
 ### 2. Compile
@@ -217,8 +220,8 @@ After configuration, you are ready to compile.
 Run the following in your terminal to compile Bitcoin Core:
 
 ``` bash
-make        # use "-j N" here for N parallel jobs
-make check  # Run tests if Python 3 is available
+cmake --build .  # Use "-j N" here for N parallel jobs.
+ctest            # Run tests if Python 3 is available. Use "-j N" here for N parallel jobs.
 ```
 
 ### 3. Deploy (optional)
@@ -226,7 +229,7 @@ make check  # Run tests if Python 3 is available
 You can also create a  `.zip` containing the `.app` bundle by running the following command:
 
 ``` bash
-make deploy
+cmake --build . --target deploy
 ```
 
 ## Running Bitcoin Core
