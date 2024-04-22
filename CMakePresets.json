@@ -3,6 +3,48 @@
   "cmakeMinimumRequired": {"major": 3, "minor": 21, "patch": 0},
   "configurePresets": [
     {
+      "name": "ci-common",
+      "hidden": true,
+      "cacheVariables": {
+        "ENABLE_WALLET": "ON",
+        "WITH_SQLITE": "ON",
+        "WITH_BDB": "ON",
+        "WITH_NATPMP": "ON",
+        "WITH_MINIUPNPC": "ON",
+        "WITH_ZMQ": "ON",
+        "WERROR": "ON",
+        "CCACHE": "ON"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "inherits": "ci-common",
+      "displayName": "Build for CI tests on Linux",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "WITH_EXTERNAL_SIGNER": "ON",
+        "WITH_USDT": "ON"
+      }
+    },
+    {
+      "name": "ci-darwin",
+      "inherits": "ci-common",
+      "displayName": "Build for CI tests on macOS",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "WITH_GUI": "Qt5",
+        "WITH_EXTERNAL_SIGNER": "ON"
+      }
+    },
+    {
       "name": "vs2022",
       "displayName": "Build using 'Visual Studio 17 2022' generator and 'x64-windows' triplet",
       "condition": {
