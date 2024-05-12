@@ -42,24 +42,28 @@ BOOST_AUTO_TEST_CASE(flatfile_open)
     size_t pos1 = 0;
     size_t pos2 = pos1 + GetSerializeSize(line1);
 
+    fprintf(stderr, "AAAAA flatfile_open(): 01\n");
     // Write first line to file.
     {
         AutoFile file{seq.Open(FlatFilePos(0, pos1))};
         file << LIMITED_STRING(line1, 256);
     }
 
+    fprintf(stderr, "AAAAA flatfile_open(): 02\n");
     // Attempt to append to file opened in read-only mode.
     {
         AutoFile file{seq.Open(FlatFilePos(0, pos2), true)};
         BOOST_CHECK_THROW(file << LIMITED_STRING(line2, 256), std::ios_base::failure);
     }
 
+    fprintf(stderr, "AAAAA flatfile_open(): 03\n");
     // Append second line to file.
     {
         AutoFile file{seq.Open(FlatFilePos(0, pos2))};
         file << LIMITED_STRING(line2, 256);
     }
 
+    fprintf(stderr, "AAAAA flatfile_open(): 04\n");
     // Read text from file in read-only mode.
     {
         std::string text;
@@ -72,6 +76,7 @@ BOOST_AUTO_TEST_CASE(flatfile_open)
         BOOST_CHECK_EQUAL(text, line2);
     }
 
+    fprintf(stderr, "AAAAA flatfile_open(): 05\n");
     // Read text from file with position offset.
     {
         std::string text;
@@ -81,6 +86,7 @@ BOOST_AUTO_TEST_CASE(flatfile_open)
         BOOST_CHECK_EQUAL(text, line2);
     }
 
+    fprintf(stderr, "AAAAA flatfile_open(): 06\n");
     // Ensure another file in the sequence has no data.
     {
         std::string text;
