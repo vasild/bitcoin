@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <compat/compat.h>
 #include <net_permissions.h>
 #include <netaddress.h>
 #include <netbase.h>
@@ -11,11 +12,19 @@
 #include <streams.h>
 #include <test/util/setup_common.h>
 #include <util/strencodings.h>
+#include <util/syserror.h>
 #include <util/translation.h>
 
 #include <string>
 
 #include <boost/test/unit_test.hpp>
+
+#ifdef __linux__
+#include <linux/rtnetlink.h>
+#elif defined(__FreeBSD__)
+#include <netlink/netlink.h>
+#include <netlink/netlink_route.h>
+#endif
 
 using namespace std::literals;
 
@@ -611,6 +620,100 @@ BOOST_AUTO_TEST_CASE(isbadport)
         }
     }
     BOOST_CHECK_EQUAL(total_bad_ports, 80);
+}
+
+std::optional<CNetAddr> QueryDefaultGateway(Network network)
+{
+    Assume(network == NET_IPV4 || network == NET_IPV6);
+
+    // Create a netlink socket.
+
+    const int s{socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE)};
+    if (s < 0) {
+        LogPrintLevel(BCLog::NET, BCLog::Level::Error, "socket(AF_NETLINK): %s\n", SysErrorString(errno));
+        return std::nullopt;
+    }
+    Sock sock{static_cast<SOCKET>(s)};
+
+    // Send request.
+
+    struct {
+        nlmsghdr hdr;
+        rtmsg data;
+        nlattr dst_hdr;
+        /// Route destination address. To query the default route we use 0.0.0.0/0 or [::]/0. For IPv4 the first 4 bytes are used.
+        char dst_data[16];
+    } request;
+
+    // Whether to use the first 4 or 16 bytes from request.attr_dst_data.
+    const size_t dst_data_len = network == NET_IPV4 ? 4 : 16;
+
+    memset(&request, 0x0, sizeof(request));
+
+    request.hdr.nlmsg_type = RTM_GETROUTE;
+    request.hdr.nlmsg_flags = NLM_F_REQUEST;
+#ifdef __linux__
+    request.hdr.nlmsg_flags |= NLM_F_DUMP;
+#endif
+    request.hdr.nlmsg_len = NLMSG_LENGTH(sizeof(rtmsg) + sizeof(nlattr) + dst_data_len);
+    request.hdr.nlmsg_seq = 0; // Sequence number, used to match which reply is to which request. Irrelevant for us because we send just one request.
+    request.data.rtm_family = network == NET_IPV4 ? AF_INET : AF_INET6;
+    request.data.rtm_dst_len = 0; // Prefix length.
+#ifdef __FreeBSD__
+    request.data.rtm_flags = RTM_F_PREFIX;
+#endif
+    request.dst_hdr.nla_type = RTA_DST;
+    request.dst_hdr.nla_len = sizeof(nlattr) + dst_data_len;
+
+    if (sock.Send(&request, sizeof(request), 0) != sizeof(request)) {
+        LogPrintLevel(BCLog::NET, BCLog::Level::Error, "send() to netlink socket: %s\n", SysErrorString(errno));
+        return std::nullopt;
+    }
+
+    // Receive response.
+
+    char response[4096];
+    ssize_t response_len;
+    do {
+        response_len = sock.Recv(response, sizeof(response), 0);
+    } while (response_len < 0 && (errno == EINTR || errno == EAGAIN));
+    if (response_len < 0) {
+        LogPrintLevel(BCLog::NET, BCLog::Level::Error, "recv() from netlink socket: %s\n", SysErrorString(errno));
+        return std::nullopt;
+    }
+
+    for (nlmsghdr* hdr = (nlmsghdr*)response; NLMSG_OK(hdr, response_len); hdr = NLMSG_NEXT(hdr, response_len)) {
+        rtmsg* r = (rtmsg*)NLMSG_DATA(hdr);
+        int remaining_len = RTM_PAYLOAD(hdr);
+        // Iterate over the attributes.
+        for (rtattr* attr = RTM_RTA(r); RTA_OK(attr, remaining_len); attr = RTA_NEXT(attr, remaining_len)) {
+            if (attr->rta_type == RTA_GATEWAY) {
+                if (network == NET_IPV4) {
+                    Assume(sizeof(in_addr) == RTA_PAYLOAD(attr));
+                    return CNetAddr{in_addr{.s_addr = *static_cast<decltype(in_addr::s_addr)*>(RTA_DATA(attr))}};
+                } else {
+                    Assume(sizeof(in6_addr) == RTA_PAYLOAD(attr));
+                    in6_addr gw;
+                    std::memcpy(&gw, RTA_DATA(attr), sizeof(gw));
+                    return CNetAddr{gw};
+                }
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+BOOST_AUTO_TEST_CASE(netlink)
+{
+    for (const auto net : {NET_IPV4, NET_IPV6}) {
+        const auto gw{QueryDefaultGateway(net)};
+        if (gw.has_value()) {
+            printf("Default %s gateway: %s\n", GetNetworkName(net).c_str(), gw->ToStringAddr().c_str());
+        } else {
+            printf("No %s default gateway.\n", GetNetworkName(net).c_str());
+        }
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
