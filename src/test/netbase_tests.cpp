@@ -682,26 +682,36 @@ std::optional<CNetAddr> QueryDefaultGateway(Network network)
         return std::nullopt;
     }
 
+    std::optional<CNetAddr> ret;
+
     for (nlmsghdr* hdr = (nlmsghdr*)response; NLMSG_OK(hdr, response_len); hdr = NLMSG_NEXT(hdr, response_len)) {
         rtmsg* r = (rtmsg*)NLMSG_DATA(hdr);
         int remaining_len = RTM_PAYLOAD(hdr);
+        printf("message len %d\n", remaining_len);
         // Iterate over the attributes.
         for (rtattr* attr = RTM_RTA(r); RTA_OK(attr, remaining_len); attr = RTA_NEXT(attr, remaining_len)) {
+            printf("rta_type %d, %d\n", attr->rta_type, RTA_PAYLOAD(attr));
+            for (int i = 0; i < RTA_PAYLOAD(attr); ++i) {
+                printf("%02hhx ", *((char*)RTA_DATA(attr) + i));
+            }
+            printf("\n");
             if (attr->rta_type == RTA_GATEWAY) {
                 if (network == NET_IPV4) {
                     Assume(sizeof(in_addr) == RTA_PAYLOAD(attr));
-                    return CNetAddr{in_addr{.s_addr = *static_cast<decltype(in_addr::s_addr)*>(RTA_DATA(attr))}};
+                    //return CNetAddr{in_addr{.s_addr = *static_cast<decltype(in_addr::s_addr)*>(RTA_DATA(attr))}};
+                    ret = CNetAddr{in_addr{.s_addr = *static_cast<decltype(in_addr::s_addr)*>(RTA_DATA(attr))}};
                 } else {
                     Assume(sizeof(in6_addr) == RTA_PAYLOAD(attr));
                     in6_addr gw;
                     std::memcpy(&gw, RTA_DATA(attr), sizeof(gw));
-                    return CNetAddr{gw};
+                    //return CNetAddr{gw};
+                    ret = CNetAddr{gw};
                 }
             }
         }
     }
 
-    return std::nullopt;
+    return ret;
 }
 
 BOOST_AUTO_TEST_CASE(netlink)
