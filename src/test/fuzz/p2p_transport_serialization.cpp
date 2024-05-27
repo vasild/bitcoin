@@ -21,12 +21,15 @@
 
 namespace {
 
-auto g_all_messages = ALL_NET_MESSAGE_TYPES;
+std::vector<NetMsgType::Type> g_all_messages;
 
 void initialize_p2p_transport_serialization()
 {
     static ECC_Context ecc_context{};
     SelectParams(ChainType::REGTEST);
+    for (auto t : ALL_NET_MESSAGE_TYPES) {
+        g_all_messages.push_back(t);
+    }
     std::sort(g_all_messages.begin(), g_all_messages.end());
 }
 
@@ -135,22 +138,23 @@ void SimulationTest(Transport& initiator, Transport& responder, R& rng, FuzzedDa
     // Function to consume a message type.
     auto msg_type_fn = [&]() {
         uint8_t v = provider.ConsumeIntegral<uint8_t>();
-        if (v == 0xFF) {
-            // If v is 0xFF, construct a valid (but possibly unknown) message type from the fuzz
-            // data.
-            std::string ret;
-            while (ret.size() < CMessageHeader::COMMAND_SIZE) {
-                char c = provider.ConsumeIntegral<char>();
-                // Match the allowed characters in CMessageHeader::IsCommandValid(). Any other
-                // character is interpreted as end.
-                if (c < ' ' || c > 0x7E) break;
-                ret += c;
-            }
-            return ret;
-        } else {
+        // XXX find a place to store the generated command
+        //if (v == 0xFF) {
+        //    // If v is 0xFF, construct a valid (but possibly unknown) message type from the fuzz
+        //    // data.
+        //    std::string ret;
+        //    while (ret.size() < CMessageHeader::COMMAND_SIZE) {
+        //        char c = provider.ConsumeIntegral<char>();
+        //        // Match the allowed characters in CMessageHeader::IsCommandValid(). Any other
+        //        // character is interpreted as end.
+        //        if (c < ' ' || c > 0x7E) break;
+        //        ret += c;
+        //    }
+        //    return ret;
+        //} else {
             // Otherwise, use it as index into the list of known messages.
             return g_all_messages[v % g_all_messages.size()];
-        }
+        //}
     };
 
     // Function to construct a CSerializedNetMsg to send.
@@ -158,7 +162,7 @@ void SimulationTest(Transport& initiator, Transport& responder, R& rng, FuzzedDa
         CSerializedNetMsg msg;
         if (first) {
             // Always send a "version" message as first one.
-            msg.m_type = "version";
+            msg.m_type = NetMsgType::VERSION;
         } else {
             msg.m_type = msg_type_fn();
         }

@@ -102,8 +102,6 @@ enum BindFlags {
 // The sleep time needs to be small to avoid new sockets stalling
 static const uint64_t SELECT_TIMEOUT_MILLISECONDS = 50;
 
-const std::string NET_MESSAGE_TYPE_OTHER = "*other*";
-
 static const uint64_t RANDOMIZER_ID_NETGROUP = 0x6c0edd8036ef4036ULL; // SHA256("netgroup")[0:8]
 static const uint64_t RANDOMIZER_ID_LOCALHOSTNONCE = 0xd93e69e2bbfa5735ULL; // SHA256("localhostnonce")[0:8]
 static const uint64_t RANDOMIZER_ID_ADDRCACHE = 0x1cf2e4ddd306dda9ULL; // SHA256("addrcache")[0:8]
@@ -821,7 +819,7 @@ bool V1Transport::SetMessageToSend(CSerializedNetMsg& msg) noexcept
     uint256 hash = Hash(msg.data);
 
     // create header
-    CMessageHeader hdr(m_magic_bytes, msg.m_type.c_str(), msg.data.size());
+    CMessageHeader hdr(m_magic_bytes, msg.m_type, msg.data.size());
     memcpy(hdr.pchChecksum, hash.begin(), CMessageHeader::CHECKSUM_SIZE);
 
     // serialize header
@@ -887,8 +885,8 @@ namespace {
  * Only message types that are actually implemented in this codebase need to be listed, as other
  * messages get ignored anyway - whether we know how to decode them or not.
  */
-const std::array<std::string, 33> V2_MESSAGE_IDS = {
-    "", // 12 bytes follow encoding the message type like in V1
+constexpr std::array V2_MESSAGE_IDS{std::to_array<NetMsgType::Type>({
+    NetMsgType::Type{""}, // 12 bytes follow encoding the message type like in V1
     NetMsgType::ADDR,
     NetMsgType::BLOCK,
     NetMsgType::BLOCKTXN,
@@ -918,15 +916,15 @@ const std::array<std::string, 33> V2_MESSAGE_IDS = {
     NetMsgType::CFCHECKPT,
     NetMsgType::ADDRV2,
     // Unimplemented message types that are assigned in BIP324:
-    "",
-    "",
-    "",
-    ""
-};
+    NetMsgType::Type{""},
+    NetMsgType::Type{""},
+    NetMsgType::Type{""},
+    NetMsgType::Type{""}
+})};
 
 class V2MessageMap
 {
-    std::unordered_map<std::string, uint8_t> m_map;
+    std::unordered_map<NetMsgType::Type, uint8_t, NetMsgType::TypeHasher> m_map;
 
 public:
     V2MessageMap() noexcept
@@ -936,9 +934,9 @@ public:
         }
     }
 
-    std::optional<uint8_t> operator()(const std::string& message_name) const noexcept
+    std::optional<uint8_t> operator()(NetMsgType::Type msg_type) const noexcept
     {
-        auto it = m_map.find(message_name);
+        auto it = m_map.find(msg_type);
         if (it == m_map.end()) return std::nullopt;
         return it->second;
     }
@@ -1381,7 +1379,7 @@ bool V2Transport::ReceivedBytes(Span<const uint8_t>& msg_bytes) noexcept
     return true;
 }
 
-std::optional<std::string> V2Transport::GetMessageType(Span<const uint8_t>& contents) noexcept
+std::optional<NetMsgType::Type> V2Transport::GetMessageType(Span<const uint8_t>& contents) noexcept
 {
     if (contents.size() == 0) return std::nullopt; // Empty contents
     uint8_t first_byte = contents[0];
@@ -1402,23 +1400,34 @@ std::optional<std::string> V2Transport::GetMessageType(Span<const uint8_t>& cont
         return std::nullopt; // Long encoding needs 12 message type bytes.
     }
 
-    size_t msg_type_len{0};
-    while (msg_type_len < CMessageHeader::COMMAND_SIZE && contents[msg_type_len] != 0) {
-        // Verify that message type bytes before the first 0x00 are in range.
-        if (contents[msg_type_len] < ' ' || contents[msg_type_len] > 0x7F) {
-            return {};
+    NetMsgType::Type tmp;
+    bool before_zero{true};
+    for (size_t i = 0; i < CMessageHeader::COMMAND_SIZE; ++i) {
+        if (before_zero) {
+            if (contents[i] == '\0') {
+                before_zero = false;
+            } else if (contents[i] < ' ' || contents[i] > 0x7F) {
+                return std::nullopt;
+            } else {
+                tmp = NetMsgType::Type(std::string_view(reinterpret_cast<const char*>(&contents[0]), i + 1));
+            }
+        } else {
+            if (contents[i] != '\0') {
+                return std::nullopt;
+            }
         }
-        ++msg_type_len;
     }
-    std::string ret{reinterpret_cast<const char*>(contents.data()), msg_type_len};
-    while (msg_type_len < CMessageHeader::COMMAND_SIZE) {
-        // Verify that message type bytes after the first 0x00 are also 0x00.
-        if (contents[msg_type_len] != 0) return {};
-        ++msg_type_len;
-    }
+
     // Strip message type bytes of contents.
     contents = contents.subspan(CMessageHeader::COMMAND_SIZE);
-    return ret;
+
+    auto i = ALL_NET_MESSAGE_TYPES.find(tmp);
+    if (i != ALL_NET_MESSAGE_TYPES.end()) {
+        return *i;
+    }
+    // XXX without peer id this log is useless and at this level we don't have the peer id
+    //LogPrint(BCLog::NET, "Unknown command \"%s\" from peer=%d\n", SanitizeString(msg_type), pfrom.GetId());
+    return NET_MESSAGE_TYPE_OTHER;
 }
 
 CNetMessage V2Transport::GetReceivedMessage(std::chrono::microseconds time, bool& reject_message) noexcept
@@ -1435,7 +1444,7 @@ CNetMessage V2Transport::GetReceivedMessage(std::chrono::microseconds time, bool
     msg.m_raw_message_size = m_recv_decode_buffer.size() + BIP324Cipher::EXPANSION;
     if (msg_type) {
         reject_message = false;
-        msg.m_type = std::move(*msg_type);
+        msg.m_type = msg_type.value();
         msg.m_time = time;
         msg.m_message_size = contents.size();
         msg.m_recv.resize(contents.size());
@@ -3797,7 +3806,7 @@ void CConnman::PushMessage(CNode* pnode, CSerializedNetMsg&& msg)
         pnode->GetId(),
         pnode->m_addr_name.c_str(),
         pnode->ConnectionTypeAsString().c_str(),
-        msg.m_type.c_str(),
+        std::string{msg.m_type}.c_str(),
         msg.data.size(),
         msg.data.data()
     );
@@ -3898,7 +3907,7 @@ void CConnman::ASMapHealthCheck()
 
 // Dump binary message to file, with timestamp.
 static void CaptureMessageToFile(const CAddress& addr,
-                                 const std::string& msg_type,
+                                 NetMsgType::Type msg_type,
                                  Span<const unsigned char> data,
                                  bool is_incoming)
 {
@@ -3929,7 +3938,7 @@ static void CaptureMessageToFile(const CAddress& addr,
 }
 
 std::function<void(const CAddress& addr,
-                   const std::string& msg_type,
+                   NetMsgType::Type msg_type,
                    Span<const unsigned char> data,
                    bool is_incoming)>
     CaptureMessage = CaptureMessageToFile;

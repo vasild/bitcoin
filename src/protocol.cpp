@@ -7,34 +7,19 @@
 
 #include <common/system.h>
 
-CMessageHeader::CMessageHeader(const MessageStartChars& pchMessageStartIn, const char* pszCommand, unsigned int nMessageSizeIn)
-    : pchMessageStart{pchMessageStartIn}
+NetMsgType::Type CMessageHeader::GetCommand() const
 {
-    // Copy the command name
-    size_t i = 0;
-    for (; i < COMMAND_SIZE && pszCommand[i] != 0; ++i) pchCommand[i] = pszCommand[i];
-    assert(pszCommand[i] == 0); // Assert that the command name passed in is not longer than COMMAND_SIZE
-
-    nMessageSize = nMessageSizeIn;
-}
-
-std::string CMessageHeader::GetCommand() const
-{
-    return std::string(pchCommand, pchCommand + strnlen(pchCommand, COMMAND_SIZE));
+    return m_command;
 }
 
 bool CMessageHeader::IsCommandValid() const
 {
     // Check the command string for errors
-    for (const char* p1 = pchCommand; p1 < pchCommand + COMMAND_SIZE; ++p1) {
-        if (*p1 == 0) {
-            // Must be all zeros after the first zero
-            for (; p1 < pchCommand + COMMAND_SIZE; ++p1) {
-                if (*p1 != 0) {
-                    return false;
-                }
-            }
-        } else if (*p1 < ' ' || *p1 > 0x7E) {
+    bool must_be_zero{false};
+    for (const auto c : m_command) {
+        if (c == '\0') {
+            must_be_zero = true;
+        } else if (c < ' ' || c > 0x7E || must_be_zero) {
             return false;
         }
     }

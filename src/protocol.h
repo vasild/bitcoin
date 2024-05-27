@@ -18,142 +18,124 @@
 #include <cstdint>
 #include <limits>
 #include <string>
-
-/** Message header.
- * (4) message start.
- * (12) command.
- * (4) size.
- * (4) checksum.
- */
-class CMessageHeader
-{
-public:
-    static constexpr size_t COMMAND_SIZE = 12;
-    static constexpr size_t MESSAGE_SIZE_SIZE = 4;
-    static constexpr size_t CHECKSUM_SIZE = 4;
-    static constexpr size_t MESSAGE_SIZE_OFFSET = std::tuple_size_v<MessageStartChars> + COMMAND_SIZE;
-    static constexpr size_t CHECKSUM_OFFSET = MESSAGE_SIZE_OFFSET + MESSAGE_SIZE_SIZE;
-    static constexpr size_t HEADER_SIZE = std::tuple_size_v<MessageStartChars> + COMMAND_SIZE + MESSAGE_SIZE_SIZE + CHECKSUM_SIZE;
-
-    explicit CMessageHeader() = default;
-
-    /** Construct a P2P message header from message-start characters, a command and the size of the message.
-     * @note Passing in a `pszCommand` longer than COMMAND_SIZE will result in a run-time assertion error.
-     */
-    CMessageHeader(const MessageStartChars& pchMessageStartIn, const char* pszCommand, unsigned int nMessageSizeIn);
-
-    std::string GetCommand() const;
-    bool IsCommandValid() const;
-
-    SERIALIZE_METHODS(CMessageHeader, obj) { READWRITE(obj.pchMessageStart, obj.pchCommand, obj.nMessageSize, obj.pchChecksum); }
-
-    MessageStartChars pchMessageStart{};
-    char pchCommand[COMMAND_SIZE]{};
-    uint32_t nMessageSize{std::numeric_limits<uint32_t>::max()};
-    uint8_t pchChecksum[CHECKSUM_SIZE]{};
-};
+#include <string_view>
+#include <unordered_set>
 
 /**
  * Bitcoin protocol message types. When adding new message types, don't forget
  * to update ALL_NET_MESSAGE_TYPES below.
  */
 namespace NetMsgType {
+
+// A dedicated type to avoid implicit conversion from std::string_view in order
+// to avoid having a generic Serialize(stream, std::string_view) that serializes
+// as 12 bytes, padded with zero byte. Can be avoided if the ser/unser functions
+// are renamed to e.g. SerializeNetMsgType() and called explicitly from CMessageHeader
+// ser/unser methods.
+class Type : public std::string_view
+{
+};
+
+struct TypeHasher {
+    size_t operator()(Type a) const { return std::hash<std::string_view>{}(std::string_view{a}); }
+};
+
 /**
  * The version message provides information about the transmitting node to the
  * receiving node at the beginning of a connection.
  */
-inline constexpr const char* VERSION{"version"};
+inline constexpr Type VERSION{"version"};
 /**
  * The verack message acknowledges a previously-received version message,
  * informing the connecting node that it can begin to send other messages.
  */
-inline constexpr const char* VERACK{"verack"};
+inline constexpr Type VERACK{"verack"};
 /**
  * The addr (IP address) message relays connection information for peers on the
  * network.
  */
-inline constexpr const char* ADDR{"addr"};
+inline constexpr Type ADDR{"addr"};
 /**
  * The addrv2 message relays connection information for peers on the network just
  * like the addr message, but is extended to allow gossiping of longer node
  * addresses (see BIP155).
  */
-inline constexpr const char* ADDRV2{"addrv2"};
+inline constexpr Type ADDRV2{"addrv2"};
 /**
  * The sendaddrv2 message signals support for receiving ADDRV2 messages (BIP155).
  * It also implies that its sender can encode as ADDRV2 and would send ADDRV2
  * instead of ADDR to a peer that has signaled ADDRV2 support by sending SENDADDRV2.
  */
-inline constexpr const char* SENDADDRV2{"sendaddrv2"};
+inline constexpr Type SENDADDRV2{"sendaddrv2"};
 /**
  * The inv message (inventory message) transmits one or more inventories of
  * objects known to the transmitting peer.
  */
-inline constexpr const char* INV{"inv"};
+inline constexpr Type INV{"inv"};
 /**
  * The getdata message requests one or more data objects from another node.
  */
-inline constexpr const char* GETDATA{"getdata"};
+inline constexpr Type GETDATA{"getdata"};
 /**
  * The merkleblock message is a reply to a getdata message which requested a
  * block using the inventory type MSG_MERKLEBLOCK.
  * @since protocol version 70001 as described by BIP37.
  */
-inline constexpr const char* MERKLEBLOCK{"merkleblock"};
+inline constexpr Type MERKLEBLOCK{"merkleblock"};
 /**
  * The getblocks message requests an inv message that provides block header
  * hashes starting from a particular point in the block chain.
  */
-inline constexpr const char* GETBLOCKS{"getblocks"};
+inline constexpr Type GETBLOCKS{"getblocks"};
 /**
  * The getheaders message requests a headers message that provides block
  * headers starting from a particular point in the block chain.
  * @since protocol version 31800.
  */
-inline constexpr const char* GETHEADERS{"getheaders"};
+inline constexpr Type GETHEADERS{"getheaders"};
 /**
  * The tx message transmits a single transaction.
  */
-inline constexpr const char* TX{"tx"};
+inline constexpr Type TX{"tx"};
 /**
  * The headers message sends one or more block headers to a node which
  * previously requested certain headers with a getheaders message.
  * @since protocol version 31800.
  */
-inline constexpr const char* HEADERS{"headers"};
+inline constexpr Type HEADERS{"headers"};
 /**
  * The block message transmits a single serialized block.
  */
-inline constexpr const char* BLOCK{"block"};
+inline constexpr Type BLOCK{"block"};
 /**
  * The getaddr message requests an addr message from the receiving node,
  * preferably one with lots of IP addresses of other receiving nodes.
  */
-inline constexpr const char* GETADDR{"getaddr"};
+inline constexpr Type GETADDR{"getaddr"};
 /**
  * The mempool message requests the TXIDs of transactions that the receiving
  * node has verified as valid but which have not yet appeared in a block.
  * @since protocol version 60002 as described by BIP35.
  *   Only available with service bit NODE_BLOOM, see also BIP111.
  */
-inline constexpr const char* MEMPOOL{"mempool"};
+inline constexpr Type MEMPOOL{"mempool"};
 /**
  * The ping message is sent periodically to help confirm that the receiving
  * peer is still connected.
  */
-inline constexpr const char* PING{"ping"};
+inline constexpr Type PING{"ping"};
 /**
  * The pong message replies to a ping message, proving to the pinging node that
  * the ponging node is still alive.
  * @since protocol version 60001 as described by BIP31.
  */
-inline constexpr const char* PONG{"pong"};
+inline constexpr Type PONG{"pong"};
 /**
  * The notfound message is a reply to a getdata message which requested an
  * object the receiving node does not have available for relay.
  * @since protocol version 70001.
  */
-inline constexpr const char* NOTFOUND{"notfound"};
+inline constexpr Type NOTFOUND{"notfound"};
 /**
  * The filterload message tells the receiving peer to filter all relayed
  * transactions and requested merkle blocks through the provided filter.
@@ -161,7 +143,7 @@ inline constexpr const char* NOTFOUND{"notfound"};
  *   Only available with service bit NODE_BLOOM since protocol version
  *   70011 as described by BIP111.
  */
-inline constexpr const char* FILTERLOAD{"filterload"};
+inline constexpr Type FILTERLOAD{"filterload"};
 /**
  * The filteradd message tells the receiving peer to add a single element to a
  * previously-set bloom filter, such as a new public key.
@@ -169,7 +151,7 @@ inline constexpr const char* FILTERLOAD{"filterload"};
  *   Only available with service bit NODE_BLOOM since protocol version
  *   70011 as described by BIP111.
  */
-inline constexpr const char* FILTERADD{"filteradd"};
+inline constexpr Type FILTERADD{"filteradd"};
 /**
  * The filterclear message tells the receiving peer to remove a previously-set
  * bloom filter.
@@ -177,19 +159,19 @@ inline constexpr const char* FILTERADD{"filteradd"};
  *   Only available with service bit NODE_BLOOM since protocol version
  *   70011 as described by BIP111.
  */
-inline constexpr const char* FILTERCLEAR{"filterclear"};
+inline constexpr Type FILTERCLEAR{"filterclear"};
 /**
  * Indicates that a node prefers to receive new block announcements via a
  * "headers" message rather than an "inv".
  * @since protocol version 70012 as described by BIP130.
  */
-inline constexpr const char* SENDHEADERS{"sendheaders"};
+inline constexpr Type SENDHEADERS{"sendheaders"};
 /**
  * The feefilter message tells the receiving peer not to inv us any txs
  * which do not meet the specified min fee rate.
  * @since protocol version 70013 as described by BIP133
  */
-inline constexpr const char* FEEFILTER{"feefilter"};
+inline constexpr Type FEEFILTER{"feefilter"};
 /**
  * Contains a 1-byte bool and 8-byte LE version number.
  * Indicates that a node is willing to provide blocks via "cmpctblock" messages.
@@ -197,36 +179,36 @@ inline constexpr const char* FEEFILTER{"feefilter"};
  * "cmpctblock" message rather than an "inv", depending on message contents.
  * @since protocol version 70014 as described by BIP 152
  */
-inline constexpr const char* SENDCMPCT{"sendcmpct"};
+inline constexpr Type SENDCMPCT{"sendcmpct"};
 /**
  * Contains a CBlockHeaderAndShortTxIDs object - providing a header and
  * list of "short txids".
  * @since protocol version 70014 as described by BIP 152
  */
-inline constexpr const char* CMPCTBLOCK{"cmpctblock"};
+inline constexpr Type CMPCTBLOCK{"cmpctblock"};
 /**
  * Contains a BlockTransactionsRequest
  * Peer should respond with "blocktxn" message.
  * @since protocol version 70014 as described by BIP 152
  */
-inline constexpr const char* GETBLOCKTXN{"getblocktxn"};
+inline constexpr Type GETBLOCKTXN{"getblocktxn"};
 /**
  * Contains a BlockTransactions.
  * Sent in response to a "getblocktxn" message.
  * @since protocol version 70014 as described by BIP 152
  */
-inline constexpr const char* BLOCKTXN{"blocktxn"};
+inline constexpr Type BLOCKTXN{"blocktxn"};
 /**
  * getcfilters requests compact filters for a range of blocks.
  * Only available with service bit NODE_COMPACT_FILTERS as described by
  * BIP 157 & 158.
  */
-inline constexpr const char* GETCFILTERS{"getcfilters"};
+inline constexpr Type GETCFILTERS{"getcfilters"};
 /**
  * cfilter is a response to a getcfilters request containing a single compact
  * filter.
  */
-inline constexpr const char* CFILTER{"cfilter"};
+inline constexpr Type CFILTER{"cfilter"};
 /**
  * getcfheaders requests a compact filter header and the filter hashes for a
  * range of blocks, which can then be used to reconstruct the filter headers
@@ -234,40 +216,42 @@ inline constexpr const char* CFILTER{"cfilter"};
  * Only available with service bit NODE_COMPACT_FILTERS as described by
  * BIP 157 & 158.
  */
-inline constexpr const char* GETCFHEADERS{"getcfheaders"};
+inline constexpr Type GETCFHEADERS{"getcfheaders"};
 /**
  * cfheaders is a response to a getcfheaders request containing a filter header
  * and a vector of filter hashes for each subsequent block in the requested range.
  */
-inline constexpr const char* CFHEADERS{"cfheaders"};
+inline constexpr Type CFHEADERS{"cfheaders"};
 /**
  * getcfcheckpt requests evenly spaced compact filter headers, enabling
  * parallelized download and validation of the headers between them.
  * Only available with service bit NODE_COMPACT_FILTERS as described by
  * BIP 157 & 158.
  */
-inline constexpr const char* GETCFCHECKPT{"getcfcheckpt"};
+inline constexpr Type GETCFCHECKPT{"getcfcheckpt"};
 /**
  * cfcheckpt is a response to a getcfcheckpt request containing a vector of
  * evenly spaced filter headers for blocks on the requested chain.
  */
-inline constexpr const char* CFCHECKPT{"cfcheckpt"};
+inline constexpr Type CFCHECKPT{"cfcheckpt"};
 /**
  * Indicates that a node prefers to relay transactions via wtxid, rather than
  * txid.
  * @since protocol version 70016 as described by BIP 339.
  */
-inline constexpr const char* WTXIDRELAY{"wtxidrelay"};
+inline constexpr Type WTXIDRELAY{"wtxidrelay"};
 /**
  * Contains a 4-byte version number and an 8-byte salt.
  * The salt is used to compute short txids needed for efficient
  * txreconciliation, as described by BIP 330.
  */
-inline constexpr const char* SENDTXRCNCL{"sendtxrcncl"};
+inline constexpr Type SENDTXRCNCL{"sendtxrcncl"};
 }; // namespace NetMsgType
 
+inline constexpr NetMsgType::Type NET_MESSAGE_TYPE_OTHER{"*other*"};
+
 /** All known message types (see above). Keep this in the same order as the list of messages above. */
-inline const std::array ALL_NET_MESSAGE_TYPES{std::to_array<std::string>({
+inline const std::unordered_set<NetMsgType::Type, NetMsgType::TypeHasher> ALL_NET_MESSAGE_TYPES{{
     NetMsgType::VERSION,
     NetMsgType::VERACK,
     NetMsgType::ADDR,
@@ -303,7 +287,124 @@ inline const std::array ALL_NET_MESSAGE_TYPES{std::to_array<std::string>({
     NetMsgType::CFCHECKPT,
     NetMsgType::WTXIDRELAY,
     NetMsgType::SENDTXRCNCL,
-})};
+}};
+
+template <typename Stream>
+void Serialize(Stream& os, NetMsgType::Type net_msg_type);
+
+template <typename Stream>
+void Unserialize(Stream& is, NetMsgType::Type& net_msg_type);
+
+/** Message header.
+ * (4) message start.
+ * (12) command.
+ * (4) size.
+ * (4) checksum.
+ */
+class CMessageHeader
+{
+public:
+    static constexpr size_t COMMAND_SIZE = 12;
+    static constexpr size_t MESSAGE_SIZE_SIZE = 4;
+    static constexpr size_t CHECKSUM_SIZE = 4;
+    static constexpr size_t MESSAGE_SIZE_OFFSET = std::tuple_size_v<MessageStartChars> + COMMAND_SIZE;
+    static constexpr size_t CHECKSUM_OFFSET = MESSAGE_SIZE_OFFSET + MESSAGE_SIZE_SIZE;
+    static constexpr size_t HEADER_SIZE = std::tuple_size_v<MessageStartChars> + COMMAND_SIZE + MESSAGE_SIZE_SIZE + CHECKSUM_SIZE;
+
+    explicit CMessageHeader() = default;
+
+    /** Construct a P2P message header from message-start characters, a command and the size of the message.
+     * @note Passing in a `pszCommand` longer than COMMAND_SIZE will result in a run-time assertion error.
+     */
+    CMessageHeader(const MessageStartChars& message_start,
+                   NetMsgType::Type command,
+                   unsigned int message_size)
+        : pchMessageStart{message_start},
+          m_command{command},
+          nMessageSize{message_size}
+    {
+        assert(m_command.length() <= COMMAND_SIZE);
+    }
+
+    NetMsgType::Type GetCommand() const;
+    bool IsCommandValid() const;
+
+    template <typename Stream>
+    void Serialize(Stream& s) const
+    {
+        s << pchMessageStart;
+        ::Serialize(s, m_command);
+        s << nMessageSize;
+        s << pchChecksum;
+    }
+
+    template <typename Stream>
+    void Unserialize(Stream& s)
+    {
+        s >> pchMessageStart;
+        ::Unserialize(s, m_command);
+        s >> nMessageSize;
+        s >> pchChecksum;
+    }
+
+    //SERIALIZE_METHODS(CMessageHeader, obj)
+    //{
+    //    READWRITE(obj.pchMessageStart);
+    //    READWRITE(obj.m_command);
+    //    READWRITE(obj.nMessageSize);
+    //    READWRITE(obj.pchChecksum);
+    //}
+
+    MessageStartChars pchMessageStart{};
+    NetMsgType::Type m_command;
+    uint32_t nMessageSize{std::numeric_limits<uint32_t>::max()};
+    uint8_t pchChecksum[CHECKSUM_SIZE]{};
+};
+
+/**
+ * Serialize NetMsgType. It is a constant size (CMessageHeader::COMMAND_SIZE),
+ * padded with zero bytes at the end.
+ */
+template <typename Stream>
+void Serialize(Stream& os, NetMsgType::Type net_msg_type)
+{
+    const size_t len{net_msg_type.size()};
+    os.write(AsBytes(Span{net_msg_type.data(), len}));
+    const size_t pad_size{CMessageHeader::COMMAND_SIZE - len};
+    static constexpr std::array<char, CMessageHeader::COMMAND_SIZE> ALL_ZERO{'\0'};
+    os.write(AsBytes(Span{ALL_ZERO.data(), pad_size}));
+}
+
+/**
+ * Unserialize NetMsgType. Expect CMessageHeader::COMMAND_SIZE bytes and interpret the
+ * first non-zero as NetMsgType::* or NET_MESSAGE_TYPE_OTHER if unrecognized.
+ */
+template <typename Stream>
+void Unserialize(Stream& is, NetMsgType::Type& net_msg_type)
+{
+    if (is.size() < CMessageHeader::COMMAND_SIZE) {
+        throw std::ios_base::failure(strprintf(
+            "Unserialize(): the remaining data in the stream (%u) is less than the command size (%u)",
+            is.size(),
+            CMessageHeader::COMMAND_SIZE));
+    }
+    std::array<char, CMessageHeader::COMMAND_SIZE> full;
+    is.read(AsWritableBytes(Span{full.data(), full.size()}));
+    NetMsgType::Type tmp;
+    for (size_t i = 0; i < full.size(); ++i) {
+        if (full[i] != '\0') {
+            tmp = NetMsgType::Type{std::string_view{full.data(), i + 1}};
+        } else {
+            break;
+        }
+    }
+    auto it = ALL_NET_MESSAGE_TYPES.find(tmp);
+    if (it != ALL_NET_MESSAGE_TYPES.end()) {
+        net_msg_type = *it;
+    } else {
+        net_msg_type = NET_MESSAGE_TYPE_OTHER;
+    }
+}
 
 /** nServices flags */
 enum ServiceFlags : uint64_t {

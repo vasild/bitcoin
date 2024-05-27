@@ -74,7 +74,8 @@ FUZZ_TARGET(process_message, .init = initialize_process_message)
     SetMockTime(mock_time);
 
     CSerializedNetMsg net_msg;
-    net_msg.m_type = random_message_type;
+    net_msg.m_type = NetMsgType::Type{std::string_view{
+        reinterpret_cast<const char*>(random_message_type.data()), random_message_type.size()}};
     net_msg.data = ConsumeRandomLengthByteVector(fuzzed_data_provider, MAX_PROTOCOL_MESSAGE_LENGTH);
 
     connman.FlushSendBuffer(p2p_node);

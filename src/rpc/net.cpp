@@ -177,7 +177,8 @@ static RPCHelpMan getpeerinfo()
                         {RPCResult::Type::NUM, "msg", "The total bytes received aggregated by message type\n"
                                                       "When a message type is not listed in this json object, the bytes received are 0.\n"
                                                       "Only known message types can appear as keys in the object and all bytes received\n"
-                                                      "of unknown message types are listed under '"+NET_MESSAGE_TYPE_OTHER+"'."}
+                                                      "of unknown message types are listed under '" +
+                                                      std::string{NET_MESSAGE_TYPE_OTHER} + "'."}
                     }},
                     {RPCResult::Type::STR, "connection_type", "Type of connection: \n" + Join(CONNECTION_TYPE_DOC, ",\n") + ".\n"
                                                               "Please note this output is unlikely to be stable in upcoming releases as we iterate to\n"
@@ -277,14 +278,14 @@ static RPCHelpMan getpeerinfo()
         UniValue sendPerMsgType(UniValue::VOBJ);
         for (const auto& i : stats.mapSendBytesPerMsgType) {
             if (i.second > 0)
-                sendPerMsgType.pushKV(i.first, i.second);
+                sendPerMsgType.pushKV(std::string{i.first}, i.second);
         }
         obj.pushKV("bytessent_per_msg", std::move(sendPerMsgType));
 
         UniValue recvPerMsgType(UniValue::VOBJ);
         for (const auto& i : stats.mapRecvBytesPerMsgType) {
             if (i.second > 0)
-                recvPerMsgType.pushKV(i.first, i.second);
+                recvPerMsgType.pushKV(std::string{i.first}, i.second);
         }
         obj.pushKV("bytesrecv_per_msg", std::move(recvPerMsgType));
         obj.pushKV("connection_type", ConnectionTypeAsString(stats.m_conn_type));
@@ -1043,7 +1044,7 @@ static RPCHelpMan sendmsgtopeer()
 
             CSerializedNetMsg msg_ser;
             msg_ser.data = msg.value();
-            msg_ser.m_type = msg_type;
+            msg_ser.m_type = NetMsgType::Type{std::string_view{msg_type.data(), msg_type.size()}};
 
             bool success = connman.ForNode(peer_id, [&](CNode* node) {
                 connman.PushMessage(node, std::move(msg_ser));

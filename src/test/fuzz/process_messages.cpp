@@ -70,7 +70,8 @@ FUZZ_TARGET(process_messages, .init = initialize_process_messages)
         SetMockTime(mock_time);
 
         CSerializedNetMsg net_msg;
-        net_msg.m_type = random_message_type;
+        net_msg.m_type = NetMsgType::Type{std::string_view{
+            reinterpret_cast<const char*>(random_message_type.data()), random_message_type.size()}};
         net_msg.data = ConsumeRandomLengthByteVector(fuzzed_data_provider, MAX_PROTOCOL_MESSAGE_LENGTH);
 
         CNode& random_node = *PickValue(fuzzed_data_provider, peers);

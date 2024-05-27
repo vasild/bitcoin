@@ -875,7 +875,7 @@ BOOST_AUTO_TEST_CASE(initial_advertise_from_version_message)
 
     const auto CaptureMessageOrig = CaptureMessage;
     CaptureMessage = [&sent, &expected](const CAddress& addr,
-                                        const std::string& msg_type,
+                                        NetMsgType::Type msg_type,
                                         Span<const unsigned char> data,
                                         bool is_incoming) -> void {
         if (!is_incoming && msg_type == "addr") {
@@ -1120,7 +1120,7 @@ public:
     /** Send V1 version message header to the transport. */
     void SendV1Version(const MessageStartChars& magic)
     {
-        CMessageHeader hdr(magic, "version", 126 + InsecureRandRange(11));
+        CMessageHeader hdr(magic, NetMsgType::VERSION, 126 + InsecureRandRange(11));
         DataStream ser{};
         ser << hdr;
         m_to_send.insert(m_to_send.end(), UCharCast(ser.data()), UCharCast(ser.data() + ser.size()));
@@ -1155,10 +1155,10 @@ public:
     }
 
     /** Schedule a message to be sent to us by the transport. */
-    void AddMessage(std::string m_type, std::vector<uint8_t> payload)
+    void AddMessage(NetMsgType::Type type, std::vector<uint8_t> payload)
     {
         CSerializedNetMsg msg;
-        msg.m_type = std::move(m_type);
+        msg.m_type = type;
         msg.data = std::move(payload);
         m_msg_to_send.push_back(std::move(msg));
     }
@@ -1467,13 +1467,13 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         // Send invalidly-encoded message
         tester.SendMessage(std::string("blocktxn\x00\x00\x00a", CMessageHeader::COMMAND_SIZE), {});
         tester.SendMessage("foobar", {}); // test receiving unknown message type
-        tester.AddMessage("barfoo", {}); // test sending unknown message type
+        tester.AddMessage(NetMsgType::Type{"barfoo"}, {}); // test sending unknown message type
         ret = tester.Interact();
         BOOST_REQUIRE(ret && ret->size() == 4);
         BOOST_CHECK((*ret)[0] && (*ret)[0]->m_type == "addrv2" && Span{(*ret)[0]->m_recv} == MakeByteSpan(msg_data_1));
         BOOST_CHECK((*ret)[1] && (*ret)[1]->m_type == "headers" && Span{(*ret)[1]->m_recv} == MakeByteSpan(msg_data_2));
         BOOST_CHECK(!(*ret)[2]);
-        BOOST_CHECK((*ret)[3] && (*ret)[3]->m_type == "foobar" && (*ret)[3]->m_recv.empty());
+        BOOST_CHECK((*ret)[3] && (*ret)[3]->m_type == NET_MESSAGE_TYPE_OTHER && (*ret)[3]->m_recv.empty());
         tester.ReceiveMessage("barfoo", {});
     }
 
@@ -1534,7 +1534,7 @@ BOOST_AUTO_TEST_CASE(v2transport_test)
         auto msg_data_2 = g_insecure_rand_ctx.randbytes<uint8_t>(4000000); // test that sending 4M payload works
         tester.SendMessage(uint8_t(InsecureRandRange(223) + 33), {}); // unknown short id
         tester.SendMessage(uint8_t(2), msg_data_1); // "block" short id
-        tester.AddMessage("blocktxn", msg_data_2); // schedule blocktxn to be sent to us
+        tester.AddMessage(NetMsgType::Type{"blocktxn"}, msg_data_2); // schedule blocktxn to be sent to us
         ret = tester.Interact();
         BOOST_REQUIRE(ret && ret->size() == 2);
         BOOST_CHECK(!(*ret)[0]);

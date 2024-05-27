@@ -11,10 +11,10 @@
 
 namespace NetMsg {
     template <typename... Args>
-    CSerializedNetMsg Make(std::string msg_type, Args&&... args)
+    CSerializedNetMsg Make(NetMsgType::Type msg_type, Args&&... args)
     {
         CSerializedNetMsg msg;
-        msg.m_type = std::move(msg_type);
+        msg.m_type = msg_type;
         VectorWriter{msg.data, 0, std::forward<Args>(args)...};
         return msg;
     }

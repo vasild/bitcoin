@@ -128,7 +128,7 @@ struct CSerializedNetMsg {
     }
 
     std::vector<unsigned char> data;
-    std::string m_type;
+    NetMsgType::Type m_type;
 
     /** Compute total memory usage of this object (own memory + any dynamic memory). */
     size_t GetMemoryUsage() const noexcept;
@@ -178,8 +178,7 @@ struct LocalServiceInfo {
 extern GlobalMutex g_maplocalhost_mutex;
 extern std::map<CNetAddr, LocalServiceInfo> mapLocalHost GUARDED_BY(g_maplocalhost_mutex);
 
-extern const std::string NET_MESSAGE_TYPE_OTHER;
-using mapMsgTypeSize = std::map</* message type */ std::string, /* total bytes */ uint64_t>;
+using mapMsgTypeSize = std::map</* message type */ NetMsgType::Type, /* total bytes */ uint64_t>;
 
 class CNodeStats
 {
@@ -234,7 +233,7 @@ public:
     std::chrono::microseconds m_time{0}; //!< time of message receipt
     uint32_t m_message_size{0};          //!< size of the payload
     uint32_t m_raw_message_size{0};      //!< used wire size of the message (including header/checksum)
-    std::string m_type;
+    NetMsgType::Type m_type;             //!< Message type. One of NetMsgType::* or NET_MESSAGE_TYPE_OTHER.
 
     explicit CNetMessage(DataStream&& recv_in) : m_recv(std::move(recv_in)) {}
     // Only one CNetMessage object will exist for the same message on either
@@ -298,13 +297,13 @@ public:
      *  - Span<const uint8_t> to_send: span of bytes to be sent over the wire (possibly empty).
      *  - bool more: whether there will be more bytes to be sent after the ones in to_send are
      *    all sent (as signaled by MarkBytesSent()).
-     *  - const std::string& m_type: message type on behalf of which this is being sent
+     *  - NetMsgType::Type m_type: message type on behalf of which this is being sent
      *    ("" for bytes that are not on behalf of any message).
      */
     using BytesToSend = std::tuple<
         Span<const uint8_t> /*to_send*/,
         bool /*more*/,
-        const std::string& /*m_type*/
+        NetMsgType::Type /*m_type*/
     >;
 
     /** Get bytes to send on the wire, if any, along with other information about it.
@@ -602,7 +601,7 @@ private:
     /** The garbage sent, or to be sent (MAYBE_V1 and AWAITING_KEY state only). */
     std::vector<uint8_t> m_send_garbage GUARDED_BY(m_send_mutex);
     /** Type of the message being sent. */
-    std::string m_send_type GUARDED_BY(m_send_mutex);
+    NetMsgType::Type m_send_type GUARDED_BY(m_send_mutex);
     /** Current sender state. */
     SendState m_send_state GUARDED_BY(m_send_mutex);
     /** Whether we've sent at least 24 bytes (which would trigger disconnect for V1 peers). */
@@ -613,7 +612,7 @@ private:
     /** Change the send state. */
     void SetSendState(SendState send_state) noexcept EXCLUSIVE_LOCKS_REQUIRED(m_send_mutex);
     /** Given a packet's contents, find the message type (if valid), and strip it from contents. */
-    static std::optional<std::string> GetMessageType(Span<const uint8_t>& contents) noexcept;
+    static std::optional<NetMsgType::Type> GetMessageType(Span<const uint8_t>& contents) noexcept;
     /** Determine how many received bytes can be processed in one go (not allowed in V1 state). */
     size_t GetMaxBytesToProcess() noexcept EXCLUSIVE_LOCKS_REQUIRED(m_recv_mutex);
     /** Put our public key + garbage in the send buffer. */
@@ -748,7 +747,7 @@ public:
         EXCLUSIVE_LOCKS_REQUIRED(!m_msg_process_queue_mutex);
 
     /** Account for the total size of a sent message in the per msg type connection stats. */
-    void AccountForSentBytes(const std::string& msg_type, size_t sent_bytes)
+    void AccountForSentBytes(NetMsgType::Type msg_type, size_t sent_bytes)
         EXCLUSIVE_LOCKS_REQUIRED(cs_vSend)
     {
         mapSendBytesPerMsgType[msg_type] += sent_bytes;
@@ -1652,7 +1651,7 @@ private:
 
 /** Defaults to `CaptureMessageToFile()`, but can be overridden by unit tests. */
 extern std::function<void(const CAddress& addr,
-                          const std::string& msg_type,
+                          NetMsgType::Type msg_type,
                           Span<const unsigned char> data,
                           bool is_incoming)>
     CaptureMessage;
