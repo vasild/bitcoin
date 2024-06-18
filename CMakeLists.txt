@@ -483,7 +483,8 @@ endif()
 
 configure_file(cmake/script/Coverage.cmake Coverage.cmake COPYONLY)
 configure_file(cmake/script/CoverageFuzz.cmake CoverageFuzz.cmake COPYONLY)
-configure_file(cmake/script/CoverageInclude.cmake.in CoverageInclude.cmake @ONLY)
+configure_file(cmake/script/CoverageIncludeBeforeTests.cmake.in CoverageIncludeBeforeTests.cmake @ONLY)
+configure_file(cmake/script/CoverageIncludeAfterTests.cmake.in CoverageIncludeAfterTests.cmake @ONLY)
 configure_file(contrib/filter-lcov.py filter-lcov.py COPYONLY)
 
 # Don't allow extended (non-ASCII) symbols in identifiers. This is easier for code review.
