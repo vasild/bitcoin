@@ -121,9 +121,7 @@ void Sv2Connman::ThreadSv2Handler() EXCLUSIVE_LOCKS_REQUIRED(!m_clients_mutex)
                 LOCK(m_clients_mutex);
                 std::unique_ptr transport = std::make_unique<Sv2Transport>(m_static_key, m_certificate.value());
                 size_t id{m_sv2_clients.size() + 1};
-                std::unique_ptr client = std::make_unique<Sv2Client>(
-                    Sv2Client{id, std::move(sock), std::move(transport)}
-                );
+                auto client = std::make_unique<Sv2Client>(id, std::move(sock), std::move(transport));
                 LogPrintLevel(BCLog::SV2, BCLog::Level::Trace, "New client id=%zu connected\n", client->m_id);
                 m_sv2_clients.emplace_back(std::move(client));
             }
