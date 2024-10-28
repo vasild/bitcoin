@@ -526,7 +526,7 @@ public:
     };
     void UnitTestMisbehaving(NodeId peer_id) override EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex) { Misbehaving(*Assert(GetPeerRef(peer_id)), ""); };
     void ProcessMessage(CNode& pfrom, const std::string& msg_type, DataStream& vRecv,
-                        const std::chrono::microseconds time_received, const std::atomic<bool>& interruptMsgProc) override
+                        const std::chrono::microseconds time_received, const std::atomic<bool>& interruptMsgProc, uint32_t raw_message_size) override
         EXCLUSIVE_LOCKS_REQUIRED(!m_peer_mutex, !m_most_recent_block_mutex, !m_headers_presync_mutex, g_msgproc_mutex, !m_tx_download_mutex);
     void UpdateLastBlockAnnounceTime(NodeId node, int64_t time_in_seconds) override;
     ServiceFlags GetDesirableServiceFlags(ServiceFlags services) const override;
@@ -2636,6 +2636,17 @@ void PeerManagerImpl::ProcessGetData(CNode& pfrom, Peer& peer, const std::atomic
     // possible, since they're common and it's efficient to batch process
     // them.
     while (it != peer.m_getdata_requests.end() && it->IsGenTxMsg()) {
+        // Undo the increment of invtxredund messages/bytes which we did unconditionally
+        // when we sent the INV/TX message in SendMessages().
+        m_connman.GetNetStats().Record(NetStats::SENT,
+                                       pfrom.ConnectedThroughNetwork(),
+                                       pfrom.m_conn_type,
+                                       "invtxredund",
+                                       // The arguments below are unsigned, but this works anyway, e.g.
+                                       // 15 + (unsigned)-1 is 14.
+                                       /*num_messages=*/(size_t)-1,
+                                       /*num_bytes=*/(size_t)-sizeof(CInv));
+
         if (interruptMsgProc) return;
         // The send buffer provides backpressure. If there's no space in
         // the buffer, pause processing until the next call.
@@ -3714,7 +3725,7 @@ void PeerManagerImpl::ProcessCompactBlockTxns(CNode& pfrom, Peer& peer, const Bl
 
 void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, DataStream& vRecv,
                                      const std::chrono::microseconds time_received,
-                                     const std::atomic<bool>& interruptMsgProc)
+                                     const std::atomic<bool>& interruptMsgProc, uint32_t raw_message_size)
 {
     AssertLockHeld(g_msgproc_mutex);
 
@@ -4235,6 +4246,11 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         const auto current_time{GetTime<std::chrono::microseconds>()};
         uint256* best_block{nullptr};
 
+        bool all_invs_are_tx{true};
+        bool all_invs_are_txredund{true};
+        size_t num_inv_tx{0};
+        size_t num_inv_txredund{0};
+
         for (CInv& inv : vInv) {
             if (interruptMsgProc) return;
 
@@ -4248,6 +4264,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
             }
 
             if (inv.IsMsgBlk()) {
+                all_invs_are_tx = false;
+                all_invs_are_txredund = false;
                 const bool fAlreadyHave = AlreadyHaveBlock(inv.hash);
                 LogDebug(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom.GetId());
 
@@ -4271,13 +4289,40 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 const bool fAlreadyHave = AlreadyHaveTx(gtxid, /*include_reconsiderable=*/true);
                 LogDebug(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom.GetId());
 
+                ++num_inv_tx;
+                if (fAlreadyHave) {
+                    ++num_inv_txredund;
+                } else {
+                    all_invs_are_txredund = false;
+                }
+
                 AddKnownTx(*peer, inv.hash);
                 if (!fAlreadyHave && !m_chainman.IsInitialBlockDownload()) {
                     AddTxAnnouncement(pfrom, gtxid, current_time);
                 }
             } else {
+                all_invs_are_tx = false;
+                all_invs_are_txredund = false;
                 LogDebug(BCLog::NET, "Unknown inv type \"%s\" received from peer=%d\n", inv.ToString(), pfrom.GetId());
             }
+        }
+        if (num_inv_tx > 0) {
+            m_connman.GetNetStats().Record(
+                NetStats::RECV,
+                pfrom.ConnectedThroughNetwork(),
+                pfrom.m_conn_type,
+                "invtx",
+                /*num_messages=*/num_inv_tx,
+                /*num_bytes=*/all_invs_are_tx ? raw_message_size : num_inv_tx * sizeof(CInv));
+        }
+        if (num_inv_txredund > 0) {
+            m_connman.GetNetStats().Record(
+                NetStats::RECV,
+                pfrom.ConnectedThroughNetwork(),
+                pfrom.m_conn_type,
+                "invtxredund",
+                /*num_messages=*/num_inv_txredund,
+                /*num_bytes=*/all_invs_are_txredund ? raw_message_size : num_inv_txredund * sizeof(CInv));
         }
 
         if (best_block != nullptr) {
@@ -5435,7 +5480,7 @@ bool PeerManagerImpl::ProcessMessages(CNode* pfrom, std::atomic<bool>& interrupt
     }
 
     try {
-        ProcessMessage(*pfrom, msg.m_type, msg.m_recv, msg.m_time, interruptMsgProc);
+        ProcessMessage(*pfrom, msg.m_type, msg.m_recv, msg.m_time, interruptMsgProc, msg.m_raw_message_size);
         if (interruptMsgProc) return false;
         {
             LOCK(peer->m_getdata_requests_mutex);
@@ -6120,6 +6165,45 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
             peer->m_blocks_for_inv_relay.clear();
         }
 
+        auto AccountInvTx = [&]() {
+            uint32_t num_inv_tx{0};
+            bool all_invs_are_tx{true};
+            for (const auto& inv : vInv) {
+                if (inv.IsGenTxMsg()) {
+                    ++num_inv_tx;
+                } else {
+                    all_invs_are_tx = false;
+                }
+            }
+            size_t num_bytes{num_inv_tx * sizeof(CInv)};
+            if (all_invs_are_tx) {
+                num_bytes += 24; // network magic (4) + command (12) + payload size (4) + checksum (4)
+            }
+
+            m_connman.GetNetStats().Record(NetStats::SENT,
+                                           pto->ConnectedThroughNetwork(),
+                                           pto->m_conn_type,
+                                           "invtx",
+                                           /*num_messages=*/num_inv_tx,
+                                           /*num_bytes=*/num_bytes);
+
+            // By default assume all sent INV/TX are redundant - ie that the peer already
+            // knows about that tx. If later we receive GETDATA/TX then we decrease the
+            // redundant bytes counter in ProcessGetData() (undo this operation).
+            // For simplicity we don't keep track of which INV/TX goes to which peer
+            // and which peer asks for which transaction with GETDATA/TX.
+            // We assume that we sent X INV/TX messages to all peers and got GETDATA/TX
+            // for some of them, that is X >= Y. If a peer sends us more than one
+            // GETDATA/TX for a given transaction (why would anybody do that?), then
+            // this is going to mess our counting.
+            m_connman.GetNetStats().Record(NetStats::SENT,
+                                           pto->ConnectedThroughNetwork(),
+                                           pto->m_conn_type,
+                                           "invtxredund",
+                                           /*num_messages=*/num_inv_tx,
+                                           /*num_bytes=*/num_bytes);
+        };
+
         if (auto tx_relay = peer->GetTxRelay(); tx_relay != nullptr) {
                 LOCK(tx_relay->m_tx_inventory_mutex);
                 // Check whether periodic sends should happen
@@ -6167,6 +6251,7 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         vInv.push_back(inv);
                         if (vInv.size() == MAX_INV_SZ) {
                             MakeAndPushMessage(*pto, NetMsgType::INV, vInv);
+                            AccountInvTx();
                             vInv.clear();
                         }
                     }
@@ -6217,8 +6302,10 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                         // Send
                         vInv.push_back(inv);
                         nRelayedTransactions++;
+
                         if (vInv.size() == MAX_INV_SZ) {
                             MakeAndPushMessage(*pto, NetMsgType::INV, vInv);
+                            AccountInvTx();
                             vInv.clear();
                         }
                         tx_relay->m_tx_inventory_known_filter.insert(hash);
@@ -6229,8 +6316,10 @@ bool PeerManagerImpl::SendMessages(CNode* pto)
                     tx_relay->m_last_inv_sequence = m_mempool.GetSequence();
                 }
         }
-        if (!vInv.empty())
+        if (!vInv.empty()) {
             MakeAndPushMessage(*pto, NetMsgType::INV, vInv);
+            AccountInvTx();
+        }
 
         // Detect whether we're stalling
         auto stalling_timeout = m_block_stalling_timeout.load();

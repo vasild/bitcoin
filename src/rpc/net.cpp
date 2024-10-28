@@ -558,7 +558,7 @@ static std::string MESSAGE_TYPE{"message_type"};
 UniValue CreateJSON(const RPCHelpMan&, const JSONRPCRequest& request)
 {
     const NodeContext& node = EnsureAnyNodeContext(request.context);
-    const CConnman& connman = EnsureConnman(node);
+    CConnman& connman = EnsureConnman(node);
 
     // Used for a quick check if a string is in request.params[0] which is
     // supposed to be a JSON array, e.g. ["direction", "network"].

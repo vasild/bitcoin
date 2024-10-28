@@ -3664,6 +3664,8 @@ NetStats::NetStats()
           for (const auto& msg_type : ALL_NET_MESSAGE_TYPES) {
               m[msg_type] = i++;
           }
+          m["invtx"] = i++;
+          m["invtxredund"] = i++;
           return m;
       }()}
 {
@@ -3790,13 +3792,19 @@ size_t NetStats::MessageTypeToIndex(const std::string& msg_type) const
 
 std::string NetStats::MessageTypeFromIndex(size_t index)
 {
-    if (index == ALL_NET_MESSAGE_TYPES.size()) {
+    if (index == ALL_NET_MESSAGE_TYPES.size() + 2) {
         return NET_MESSAGE_TYPE_OTHER;
+    }
+    if (index == ALL_NET_MESSAGE_TYPES.size() + 1) {
+        return "invtxredund";
+    }
+    if (index == ALL_NET_MESSAGE_TYPES.size()) {
+        return "invtx";
     }
     return ALL_NET_MESSAGE_TYPES.at(index);
 }
 
-const NetStats& CConnman::GetNetStats() const
+NetStats& CConnman::GetNetStats()
 {
     return m_net_stats;
 }

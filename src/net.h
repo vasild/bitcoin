@@ -721,7 +721,7 @@ private:
 
     // Access like m_data[direction index][net index][conn type index][msg type index].bytes = 123;
     // Arrays are used so that this can be accessed from multiple threads without a mutex protection.
-    std::array<std::array<std::array<std::array<BytesAndCount, ALL_NET_MESSAGE_TYPES.size() + 1>,
+    std::array<std::array<std::array<std::array<BytesAndCount, ALL_NET_MESSAGE_TYPES.size() + 1 + 2 /* +2 for invtx and invtxredund */>,
                                      NUM_CONNECTION_TYPES>,
                           NET_MAX>,
                NUM_DIRECTIONS>
@@ -1332,7 +1332,7 @@ public:
 
     bool MultipleManualOrFullOutboundConns(Network net) const EXCLUSIVE_LOCKS_REQUIRED(m_nodes_mutex);
 
-    const NetStats& GetNetStats() const;
+    NetStats& GetNetStats();
 
 private:
     struct ListenSocket {
