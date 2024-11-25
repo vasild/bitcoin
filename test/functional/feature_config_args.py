@@ -163,8 +163,8 @@ class ConfArgsTest(BitcoinTestFramework):
 
     def test_log_buffer(self):
         self.stop_node(0)
-        with self.nodes[0].assert_debug_log(expected_msgs=['Warning: parsed potentially confusing double-negative -connect=0\n']):
-            self.start_node(0, extra_args=['-noconnect=0'])
+        with self.nodes[0].assert_debug_log(expected_msgs=['Warning: parsed potentially confusing double-negative -listen=0\n']):
+            self.start_node(0, extra_args=['-nolisten=0'])
 
     def test_args_log(self):
         self.stop_node(0)
@@ -310,13 +310,13 @@ class ConfArgsTest(BitcoinTestFramework):
         # With -proxy, an ADDR_FETCH connection is made to a peer that the dns seed resolves to.
         # ADDR_FETCH connections are not used when -connect is used.
         with self.nodes[0].assert_debug_log(expected_msgs=dnsseed_ignored):
-            self.restart_node(0, extra_args=['-connect=fakeaddress1', '-dnsseed=1', '-proxy=1.2.3.4'])
+            self.restart_node(0, extra_args=['-connect=fakeaddress1', '-dnsseed=1', '-proxy=127.0.0.1:1'])
 
         # If the user did not disable -dnsseed, but it was soft-disabled because they provided -connect,
         # they shouldn't see a warning about -dnsseed being ignored.
         with self.nodes[0].assert_debug_log(expected_msgs=addcon_thread_started,
                 unexpected_msgs=dnsseed_ignored):
-            self.restart_node(0, extra_args=['-connect=fakeaddress1', '-proxy=1.2.3.4'])
+            self.restart_node(0, extra_args=['-connect=fakeaddress1', '-proxy=127.0.0.1:1'])
 
         # We have to supply expected_msgs as it's a required argument
         # The expected_msg must be something we are confident will be logged after the unexpected_msg
