@@ -171,7 +171,7 @@ function traffic_monitor_end()
 
   for ifname in $(get_interfaces) ; do
     f=$(tcpdump_file_for_interface "$ifname")
-    if [ ! -e "$f" -a "$FILE_ENV" != "./ci/test/00_setup_env_native_asan.sh" ] ; then
+    if [ ! -e "$f" ] && [ "$FILE_ENV" != "./ci/test/00_setup_env_native_asan.sh" ] ; then
       # In some CI environments this script is not running as root and so the
       # tcpdump errors and does not create $f. Skip silently those, but we
       # need at least one where tcpdump can run and this is the ASAN one. So
@@ -189,6 +189,22 @@ function traffic_monitor_end()
     fi
   done
 }
+
+traffic_monitor_begin
+iptables  -A OUTPUT -j LOG --log-prefix "ttttt1" --log-level emerg || :
+ip6tables -A OUTPUT -j LOG --log-prefix "ttttt2" --log-level emerg || :
+iptables  -A OUTPUT -m addrtype \! --dst-type LOCAL -j LOG --log-prefix "ttttt3" --log-level emerg || :
+ip6tables -A OUTPUT -m addrtype \! --dst-type LOCAL -j LOG --log-prefix "ttttt4" --log-level emerg || :
+id || :
+cat /etc/resolv.conf || :
+host bitcoin.org || :
+host nonexistentinvalidfoobarbaz.org || :
+telnet 50.60.1.2 3456 || :
+dmesg |grep ttttt || :
+grep -r ttttt /var/log/ || :
+iptables -v -x -n -L || :
+traffic_monitor_end
+exit 34
 
 if [ "$RUN_UNIT_TESTS" = "true" ]; then
   traffic_monitor_begin
