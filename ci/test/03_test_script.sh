@@ -172,7 +172,9 @@ function traffic_monitor_end()
 
   for ifname in $(get_interfaces) ; do
     f=$(tcpdump_file "$test_name" "$ifname")
-    if [ ! -e "$f" ] && [ "$FILE_ENV" != "./ci/test/00_setup_env_native_asan.sh" ] ; then
+    echo "AAAAAAAAAAAAAAA _${CI_FAIL_IF_NO_TCPDUMP_FILE}_"
+    exit 1
+    if [ ! -e "$f" ] && [ "$CI_FAIL_IF_NO_TCPDUMP_FILE" = "1" ] ; then
       # In some CI environments this script is not running as root and so the
       # tcpdump errors and does not create $f. Skip silently those, but we
       # need at least one where tcpdump can run and this is the ASAN one. So
