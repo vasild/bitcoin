@@ -537,6 +537,7 @@ std::shared_ptr<CNode> CConnman::ConnectNode(CAddress addrConnect, const char *p
             pszDest ? pszDest : "",
             conn_type,
             /*inbound_onion=*/false,
+            [this](CNode& node) { m_msgproc->FinalizeNode(node); },
             CNodeOptions{
                 .permission_flags = permission_flags,
                 .i2p_sam_session = std::move(i2p_transient_session),
@@ -1836,6 +1837,7 @@ void CConnman::CreateNodeFromAcceptedSocket(std::unique_ptr<Sock>&& sock,
         /*addrNameIn=*/"",
         ConnectionType::INBOUND,
         inbound_onion,
+        [this](CNode& node) { m_msgproc->FinalizeNode(node); },
         CNodeOptions{
             .permission_flags = permission_flags,
             .prefer_evict = discouraged,
@@ -1907,6 +1909,8 @@ void CConnman::DisconnectNodes()
     // m_reconnections_mutex while holding m_nodes_mutex.
     decltype(m_reconnections) reconnections_to_add;
 
+    std::vector<std::shared_ptr<CNode>> disconnected_nodes;
+
     {
         LOCK(m_nodes_mutex);
 
@@ -1922,52 +1926,40 @@ void CConnman::DisconnectNodes()
         }
 
         // Disconnect unused nodes
-        std::vector<std::shared_ptr<CNode>> nodes_copy = m_nodes;
-        for (auto& pnode : nodes_copy)
-        {
-            if (pnode->fDisconnect)
-            {
-                // remove from m_nodes
-                m_nodes.erase(remove(m_nodes.begin(), m_nodes.end(), pnode), m_nodes.end());
+        for (auto it = m_nodes.begin(); it != m_nodes.end();) {
+            auto node = *it;
+            if (node->fDisconnect) {
+                it = m_nodes.erase(it);
+
+                // Keep a reference to this CNode object to delay its destruction until
+                // after m_nodes_mutex has been released. Destructing a node involves
+                // calling m_msgproc->FinalizeNode() which acquires cs_main. Lock order
+                // should be cs_main, m_nodes_mutex.
+                disconnected_nodes.push_back(node);
 
                 // Add to reconnection list if appropriate. We don't reconnect right here, because
                 // the creation of a connection is a blocking operation (up to several seconds),
                 // and we don't want to hold up the socket handler thread for that long.
-                if (network_active && pnode->m_transport->ShouldReconnectV1()) {
+                if (network_active && node->m_transport->ShouldReconnectV1()) {
                     reconnections_to_add.push_back({
-                        .addr_connect = pnode->addr,
-                        .grant = std::move(pnode->grantOutbound),
-                        .destination = pnode->m_dest,
-                        .conn_type = pnode->m_conn_type,
+                        .addr_connect = node->addr,
+                        .grant = std::move(node->grantOutbound),
+                        .destination = node->m_dest,
+                        .conn_type = node->m_conn_type,
                         .use_v2transport = false});
-                    LogDebug(BCLog::NET, "retrying with v1 transport protocol for peer=%d\n", pnode->GetId());
+                    LogDebug(BCLog::NET, "retrying with v1 transport protocol for peer=%d\n", node->GetId());
                 }
 
                 // release outbound grant (if any)
-                pnode->grantOutbound.Release();
+                node->grantOutbound.Release();
 
                 // close socket and cleanup
-                pnode->CloseSocketDisconnect();
+                node->CloseSocketDisconnect();
 
                 // update connection count by network
-                if (pnode->IsManualOrFullOutboundConn()) --m_network_conn_counts[pnode->addr.GetNetwork()];
-
-                // hold in disconnected pool until all refs are released
-                m_nodes_disconnected.push_back(pnode);
-            }
-        }
-    }
-    {
-        // Delete disconnected nodes
-        std::list<std::shared_ptr<CNode>> nodes_disconnected_copy = m_nodes_disconnected;
-        for (auto& pnode : nodes_disconnected_copy)
-        {
-            // Destroy the object only after other threads have stopped using it.
-            // References are only added to elements in m_nodes.
-            // No new references are allowed for elements in m_nodes_disconnected.
-            if (pnode.use_count() == 2) { // 2 = one in m_nodes_disconnected and one in nodes_disconnected_copy.
-                m_nodes_disconnected.remove(pnode);
-                DeleteNode(std::move(pnode));
+                if (node->IsManualOrFullOutboundConn()) --m_network_conn_counts[node->addr.GetNetwork()];
+            } else {
+                ++it;
             }
         }
     }
@@ -2089,23 +2081,26 @@ void CConnman::SocketHandler()
 
     Sock::EventsPerSock events_per_sock;
 
-    {
-        const NodesSnapshot snap{*this, /*shuffle=*/false};
+    // Make sure no nodes will be deleted while we work on them.
+    auto nodes_snapshot = WITH_LOCK(m_nodes_mutex, return m_nodes);
 
-        const auto timeout = std::chrono::milliseconds(SELECT_TIMEOUT_MILLISECONDS);
+    const auto timeout = std::chrono::milliseconds(SELECT_TIMEOUT_MILLISECONDS);
 
-        // Check for the readiness of the already connected sockets and the
-        // listening sockets in one call ("readiness" as in poll(2) or
-        // select(2)). If none are ready, wait for a short while and return
-        // empty sets.
-        events_per_sock = GenerateWaitSockets(snap.Nodes());
-        if (events_per_sock.empty() || !events_per_sock.begin()->first->WaitMany(timeout, events_per_sock)) {
-            interruptNet.sleep_for(timeout);
-        }
-
-        // Service (send/receive) each of the already connected nodes.
-        SocketHandlerConnected(snap.Nodes(), events_per_sock);
+    // Check for the readiness of the already connected sockets and the
+    // listening sockets in one call ("readiness" as in poll(2) or
+    // select(2)). If none are ready, wait for a short while and return
+    // empty sets.
+    events_per_sock = GenerateWaitSockets(nodes_snapshot);
+    if (events_per_sock.empty() || !events_per_sock.begin()->first->WaitMany(timeout, events_per_sock)) {
+        interruptNet.sleep_for(timeout);
     }
+
+    // Service (send/receive) each of the already connected nodes.
+    SocketHandlerConnected(nodes_snapshot, events_per_sock);
+
+    // Release the snapshot. Now nodes can be deleted.
+    // This is safe because we do not use any nodes below this line.
+    nodes_snapshot.clear();
 
     // Accept new connections from listening sockets.
     SocketHandlerListening(events_per_sock);
@@ -3035,28 +3030,34 @@ void CConnman::ThreadMessageHandler()
     {
         bool fMoreWork = false;
 
-        {
-            // Randomize the order in which we process messages from/to our peers.
-            // This prevents attacks in which an attacker exploits having multiple
-            // consecutive connections in the m_nodes list.
-            const NodesSnapshot snap{*this, /*shuffle=*/true};
+        // Make sure no nodes will be deleted while ProcessMessages() and
+        // SendMessages() are running below.
+        auto nodes_snapshot = WITH_LOCK(m_nodes_mutex, return m_nodes);
 
-            for (auto& pnode : snap.Nodes()) {
-                if (pnode->fDisconnect)
-                    continue;
+        // Randomize the order in which we process messages from/to our peers.
+        // This prevents attacks in which an attacker exploits having multiple
+        // consecutive connections in the m_nodes list.
+        std::shuffle(nodes_snapshot.begin(), nodes_snapshot.end(), FastRandomContext{});
 
-                // Receive messages
-                bool fMoreNodeWork = m_msgproc->ProcessMessages(pnode.get(), flagInterruptMsgProc);
-                fMoreWork |= (fMoreNodeWork && !pnode->fPauseSend);
-                if (flagInterruptMsgProc)
-                    return;
-                // Send messages
-                m_msgproc->SendMessages(pnode.get());
+        for (auto& pnode : nodes_snapshot) {
+            if (pnode->fDisconnect)
+                continue;
 
-                if (flagInterruptMsgProc)
-                    return;
-            }
+            // Receive messages
+            bool fMoreNodeWork = m_msgproc->ProcessMessages(pnode.get(), flagInterruptMsgProc);
+            fMoreWork |= (fMoreNodeWork && !pnode->fPauseSend);
+            if (flagInterruptMsgProc)
+                return;
+            // Send messages
+            m_msgproc->SendMessages(pnode.get());
+
+            if (flagInterruptMsgProc)
+                return;
         }
+
+        // Release the snapshot. Now nodes can be deleted.
+        // This is safe because ProcessMessages() and SendMessages() have completed.
+        nodes_snapshot.clear();
 
         WAIT_LOCK(mutexMsgProc, lock);
         if (!fMoreWork) {
@@ -3473,23 +3474,12 @@ void CConnman::StopNodes()
     for (auto& pnode : nodes) {
         LogDebug(BCLog::NET, "Stopping node, %s", pnode->DisconnectMsg(fLogIPs));
         pnode->CloseSocketDisconnect();
-        DeleteNode(std::move(pnode));
     }
+    nodes.clear();
 
-    for (auto& pnode : m_nodes_disconnected) {
-        DeleteNode(std::move(pnode));
-    }
-    m_nodes_disconnected.clear();
     vhListenSocket.clear();
     semOutbound.reset();
     semAddnode.reset();
-}
-
-void CConnman::DeleteNode(std::shared_ptr<CNode>&& pnode)
-{
-    assert(pnode);
-    m_msgproc->FinalizeNode(*pnode);
-    pnode.reset();
 }
 
 CConnman::~CConnman()
@@ -3797,6 +3787,7 @@ CNode::CNode(NodeId idIn,
              const std::string& addrNameIn,
              ConnectionType conn_type_in,
              bool inbound_onion,
+             std::function<void(CNode&)> destruct_cb,
              CNodeOptions&& node_opts)
     : m_transport{MakeTransport(idIn, node_opts.use_v2transport, conn_type_in == ConnectionType::INBOUND)},
       m_permission_flags{node_opts.permission_flags},
@@ -3813,7 +3804,8 @@ CNode::CNode(NodeId idIn,
       id{idIn},
       nLocalHostNonce{nLocalHostNonceIn},
       m_recv_flood_size{node_opts.recv_flood_size},
-      m_i2p_sam_session{std::move(node_opts.i2p_sam_session)}
+      m_i2p_sam_session{std::move(node_opts.i2p_sam_session)},
+      m_destruct_cb{destruct_cb}
 {
     if (inbound_onion) assert(conn_type_in == ConnectionType::INBOUND);
 
@@ -3826,6 +3818,13 @@ CNode::CNode(NodeId idIn,
         LogDebug(BCLog::NET, "Added connection to %s peer=%d\n", m_addr_name, id);
     } else {
         LogDebug(BCLog::NET, "Added connection peer=%d\n", id);
+    }
+}
+
+CNode::~CNode()
+{
+    if (m_destruct_cb) {
+        m_destruct_cb(*this);
     }
 }
 

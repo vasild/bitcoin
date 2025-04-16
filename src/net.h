@@ -886,9 +886,12 @@ public:
           const std::string& addrNameIn,
           ConnectionType conn_type_in,
           bool inbound_onion,
+          std::function<void(CNode&)> destruct_cb = {},
           CNodeOptions&& node_opts = {});
     CNode(const CNode&) = delete;
     CNode& operator=(const CNode&) = delete;
+
+    ~CNode();
 
     NodeId GetId() const {
         return id;
@@ -981,6 +984,11 @@ private:
      * Otherwise this unique_ptr is empty.
      */
     std::unique_ptr<i2p::sam::Session> m_i2p_sam_session GUARDED_BY(m_sock_mutex);
+
+    /**
+     * A function to be called just before this object is destroyed.
+     */
+    std::function<void(CNode&)> m_destruct_cb;
 };
 
 /**
@@ -1350,8 +1358,6 @@ private:
     std::shared_ptr<CNode> ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure, ConnectionType conn_type, bool use_v2transport) EXCLUSIVE_LOCKS_REQUIRED(!m_unused_i2p_sessions_mutex);
     void AddWhitelistPermissionFlags(NetPermissionFlags& flags, const CNetAddr &addr, const std::vector<NetWhitelistPermissions>& ranges) const;
 
-    void DeleteNode(std::shared_ptr<CNode>&& pnode);
-
     NodeId GetNewNodeId();
 
     /** (Try to) send data from node's vSendMsg. Returns (bytes_sent, data_left). */
@@ -1427,7 +1433,6 @@ private:
 
     mutable Mutex m_added_nodes_mutex;
     std::vector<std::shared_ptr<CNode>> m_nodes GUARDED_BY(m_nodes_mutex);
-    std::list<std::shared_ptr<CNode>> m_nodes_disconnected;
     mutable RecursiveMutex m_nodes_mutex;
     std::atomic<NodeId> nLastNodeId{0};
     unsigned int nPrevNodeCount{0};
@@ -1617,40 +1622,6 @@ private:
      * unexpectedly use too much memory.
      */
     static constexpr size_t MAX_UNUSED_I2P_SESSIONS_SIZE{10};
-
-    /**
-     * RAII helper to atomically create a copy of `m_nodes` and add a reference
-     * to each of the nodes. The nodes are released when this object is destroyed.
-     */
-    class NodesSnapshot
-    {
-    public:
-        explicit NodesSnapshot(const CConnman& connman, bool shuffle)
-        {
-            {
-                LOCK(connman.m_nodes_mutex);
-                m_nodes_copy = connman.m_nodes;
-            }
-            if (shuffle) {
-                std::shuffle(m_nodes_copy.begin(), m_nodes_copy.end(), FastRandomContext{});
-            }
-        }
-
-        ~NodesSnapshot()
-        {
-            for (auto& node : m_nodes_copy) {
-                node.reset();
-            }
-        }
-
-        const std::vector<std::shared_ptr<CNode>>& Nodes() const
-        {
-            return m_nodes_copy;
-        }
-
-    private:
-        std::vector<std::shared_ptr<CNode>> m_nodes_copy;
-    };
 
     const CChainParams& m_params;
 

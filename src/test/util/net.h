@@ -62,11 +62,10 @@ struct ConnmanTestMsg : public CConnman {
     void ClearTestNodes()
     {
         LOCK(m_nodes_mutex);
-        for (auto& node : m_nodes) {
-            node.reset();
-        }
         m_nodes.clear();
     }
+
+    NetEventsInterface* MsgProc() const { return m_msgproc; };
 
     void Handshake(CNode& node,
                    bool successfully_connected,
