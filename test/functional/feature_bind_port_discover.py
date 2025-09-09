@@ -7,6 +7,9 @@ Test that -discover does not add all interfaces' addresses if we listen on only 
 """
 
 from test_framework.test_framework import BitcoinTestFramework, SkipTest
+from test_framework.test_node import (
+    FailedToStartError,
+)
 from test_framework.util import (
     assert_equal,
     assert_not_equal,
@@ -15,8 +18,8 @@ from test_framework.util import (
 )
 
 # We need to bind to a routable address for this test to exercise the relevant code
-# and also must have another routable address on another interface which must not
-# be named "lo" or "lo0".
+# and also must have another routable address. Those addresses must be on an interface
+# that is UP and is not a loopback interface (IFF_LOOPBACK).
 # To set these routable addresses on the machine, use:
 # Linux:
 # First find your interfaces: ip addr show
@@ -70,19 +73,28 @@ class BindPortDiscoverTest(BitcoinTestFramework):
         # False. We do not want any -bind= thus set has_explicit_bind to True.
         for node in self.nodes:
             node.has_explicit_bind = True
-        self.start_nodes()
 
-    def add_options(self, parser):
-        parser.add_argument(
-            "--ihave1111and2222", action='store_true', dest="ihave1111and2222",
-            help=f"Run the test, assuming {ADDR1} and {ADDR2} are configured on the machine",
-            default=False)
-
-    def skip_test_if_missing_module(self):
-        if not self.options.ihave1111and2222:
-            raise SkipTest(
-                f"To run this test make sure that {ADDR1} and {ADDR2} (routable addresses) are "
-                "assigned to the interfaces on this machine and rerun with --ihave1111and2222")
+        try:
+            self.start_nodes()
+        except FailedToStartError as e:
+            for node in self.nodes:
+                if node.running:
+                    if node.rpc_connected:
+                        node.stop_node(wait=node.rpc_timeout)
+                    else:
+                        node.process.kill()
+                        node.process.wait(timeout=node.rpc_timeout)
+                        node.process = None
+                        node.stdout.close()
+                        node.stderr.close()
+                        node.running = False
+            if 'Unable to bind to ' in str(e):
+                raise SkipTest(
+                    f'To run this test make sure that {ADDR1} and {ADDR2} '
+                    '(routable addresses) are assigned to non-loopback '
+                    'interfaces on this machine')
+            else:
+                raise e
 
     def run_test(self):
         self.log.info(
