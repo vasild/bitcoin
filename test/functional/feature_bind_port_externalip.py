@@ -19,12 +19,12 @@ from test_framework.util import assert_equal, p2p_port
 # Linux:
 # First find your interfaces: ip addr show
 # Then use your actual interface names (replace INTERFACE_NAME with yours):
-# ip addr add 1.1.1.1/32 dev INTERFACE_NAME && ip addr add 2.2.2.2/32 dev INTERFACE_NAME  # to set up
-# ip addr del 1.1.1.1/32 dev INTERFACE_NAME && ip addr del 2.2.2.2/32 dev INTERFACE_NAME  # to remove it
+# ip addr add 1.1.1.5/32 dev INTERFACE_NAME  # to set up
+# ip addr del 1.1.1.5/32 dev INTERFACE_NAME  # to remove it
 # FreeBSD and MacOS:
-# ifconfig INTERFACE_NAME 1.1.1.1/32 alias  # to set up
-# ifconfig INTERFACE_NAME 1.1.1.1 -alias  # to remove it, after the test
-ADDR = '1.1.1.1'
+# ifconfig INTERFACE_NAME 1.1.1.5/32 alias  # to set up
+# ifconfig INTERFACE_NAME 1.1.1.5 -alias  # to remove it, after the test
+ADDR = '1.1.1.5'
 
 # array of tuples [arguments, expected port in localaddresses]
 EXPECTED = [

@@ -34,8 +34,8 @@ from test_framework.util import (
 # FreeBSD:
 # ifconfig em0 1.1.1.1/32 alias && ifconfig wlan0 2.2.2.2/32 alias  # to set up
 # ifconfig em0 1.1.1.1 -alias && ifconfig wlan0 2.2.2.2 -alias  # to remove it, after the test
-ADDR1 = '1.1.1.1'
-ADDR2 = '2.2.2.2'
+ADDR1 = '1.1.1.5'
+ADDR2 = '1111:1111::5'
 
 class BindPortDiscoverTest(BitcoinTestFramework):
     def set_test_params(self):
