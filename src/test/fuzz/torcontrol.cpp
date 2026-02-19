@@ -49,10 +49,10 @@ FUZZ_TARGET(torcontrol, .init = initialize_torcontrol)
         CallOneOf(
             fuzzed_data_provider,
             [&] {
-                tor_control_reply.code = 250;
+                tor_control_reply.code = TOR_REPLY_OK;
             },
             [&] {
-                tor_control_reply.code = 510;
+                tor_control_reply.code = TOR_REPLY_UNRECOGNIZED;
             },
             [&] {
                 tor_control_reply.code = fuzzed_data_provider.ConsumeIntegral<int>();

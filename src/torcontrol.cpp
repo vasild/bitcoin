@@ -53,9 +53,6 @@ const std::string DEFAULT_TOR_CONTROL = "127.0.0.1:" + ToString(DEFAULT_TOR_CONT
 static const int TOR_COOKIE_SIZE = 32;
 /** Size of client/server nonce for SAFECOOKIE */
 static const int TOR_NONCE_SIZE = 32;
-/** Tor control reply code. Ref: https://spec.torproject.org/control-spec/replies.html */
-static const int TOR_REPLY_OK = 250;
-static const int TOR_REPLY_UNRECOGNIZED = 510;
 /** For computing serverHash in SAFECOOKIE */
 static const std::string TOR_SAFE_SERVERKEY = "Tor safe cookie authentication server-to-controller hash";
 /** For computing clientHash in SAFECOOKIE */
