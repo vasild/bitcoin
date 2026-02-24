@@ -134,8 +134,8 @@ std::optional<CNetAddr> QueryDefaultGatewayImpl(sa_family_t family)
             return std::nullopt;
         }
 
-#if defined(__FreeBSD_version) && __FreeBSD_version >= 1500029
-        using recv_result_t = size_t;
+#ifdef __FreeBSD__
+        using recv_result_t = decltype(NLMSG_HDRLEN);
 #else
         using recv_result_t = int64_t;
 #endif
