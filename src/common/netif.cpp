@@ -134,7 +134,9 @@ std::optional<CNetAddr> QueryDefaultGatewayImpl(sa_family_t family)
             return std::nullopt;
         }
 
-        for (nlmsghdr* hdr = (nlmsghdr*)response; NLMSG_OK(hdr, recv_result); hdr = NLMSG_NEXT(hdr, recv_result)) {
+        using recv_result_t = std::conditional_t<std::is_signed_v<decltype(NLMSG_HDRLEN)>, int64_t, decltype(NLMSG_HDRLEN)>;
+
+        for (nlmsghdr* hdr = (nlmsghdr*)response; NLMSG_OK(hdr, static_cast<recv_result_t>(recv_result)); hdr = NLMSG_NEXT(hdr, recv_result)) {
             if (!(hdr->nlmsg_flags & NLM_F_MULTI)) {
                 done = true;
             }
