@@ -199,7 +199,9 @@ BasicTestingSetup::BasicTestingSetup(const ChainType chainType, TestOpts opts)
     m_args.ForceSetArg("-datadir", fs::PathToString(m_path_root));
     gArgs.ForceSetArg("-datadir", fs::PathToString(m_path_root));
 
-    gArgs.ForceSetArg("-natpmp", "0"); // Avoid non-loopback network traffic during tests.
+    // Avoid non-loopback network traffic during tests.
+    gArgs.ForceSetArg("-dnsseed", "0"); // DNS queries are usually forwarded to upstream DNS servers.
+    gArgs.ForceSetArg("-natpmp", "0"); // NATPMP sends packets to the router.
 
     SelectParams(chainType);
     InitLogging(*m_node.args);
