@@ -373,6 +373,37 @@ TestingSetup::TestingSetup(
     }
 }
 
+NetTestingSetup::NetTestingSetup(ChainType chain_type, const TestOpts& test_opts)
+    : TestingSetup{chain_type, test_opts}
+{
+    fListen = false;
+    fNameLookup = false;
+    m_node.args->ForceSetArg("-dnsseed", "0");
+    m_node.args->ForceSetArg("-fixedseeds", "0");
+
+    CConnman::Options opts;
+    opts.m_max_automatic_connections = 1;
+    opts.nSendBufferMaxSize = 1000 * m_node.args->GetIntArg("-maxsendbuffer", DEFAULT_MAXSENDBUFFER);
+    opts.nReceiveFloodSize = 1000 * m_node.args->GetIntArg("-maxreceivebuffer", DEFAULT_MAXRECEIVEBUFFER);
+    opts.m_banman = m_node.banman.get();
+    opts.m_msgproc = m_node.peerman.get();
+    opts.m_use_addrman_outgoing = true;
+
+    if (!m_node.connman->Start(*m_node.scheduler, opts)) {
+        throw std::runtime_error{"Cannot start connman"};
+    }
+}
+
+NetTestingSetup::~NetTestingSetup()
+{
+    m_node.connman->Interrupt();
+
+    m_node.args->ForceSetArg("-fixedseeds", DEFAULT_FIXEDSEEDS ? "1" : "0");
+    m_node.args->ForceSetArg("-dnsseed", DEFAULT_DNSSEED ? "1" : "0");
+    fNameLookup = DEFAULT_NAME_LOOKUP;
+    fListen = true;
+}
+
 TestChain100Setup::TestChain100Setup(
     const ChainType chain_type,
     TestOpts opts)

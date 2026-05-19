@@ -16,6 +16,7 @@
 #include <primitives/transaction.h>
 #include <pubkey.h>
 #include <stdexcept>
+#include <test/util/net.h>
 #include <test/util/random.h>
 #include <util/chaintype.h> // IWYU pragma: export
 #include <util/check.h>
@@ -131,6 +132,17 @@ struct RegTestingSetup : public TestingSetup {
 struct Testnet4Setup : public TestingSetup {
     Testnet4Setup()
         : TestingSetup{ChainType::TESTNET4} {}
+};
+
+/**
+ * TestingSetup + start connman at the beginning of each test and stop it when it ends.
+ * Users of this should override `CreateSock()`, so that the connman functions do not create
+ * a real socket and do not open real network connections.
+ */
+struct NetTestingSetup : public TestingSetup {
+    explicit NetTestingSetup(ChainType chain_type = ChainType::REGTEST, const TestOpts& test_opts = {});
+
+    ~NetTestingSetup();
 };
 
 class CBlock;
