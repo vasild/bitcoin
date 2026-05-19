@@ -105,6 +105,7 @@ typedef int64_t NodeId;
 struct AddedNodeParams {
     std::string m_added_node;
     bool m_use_v2transport;
+    std::optional<Proxy> proxy_override;
 };
 
 struct AddedNodeInfo {
@@ -1134,7 +1135,7 @@ public:
             // peer doesn't support it or immediately disconnects us for another reason.
             const bool use_v2transport(GetLocalServices() & NODE_P2P_V2);
             for (const std::string& added_node : connOptions.m_added_nodes) {
-                m_added_node_params.push_back({added_node, use_v2transport});
+                m_added_node_params.push_back({added_node, use_v2transport, {}});
             }
         }
         m_onion_binds = connOptions.onion_binds;

@@ -119,15 +119,15 @@ BOOST_FIXTURE_TEST_CASE(test_addnode_getaddednodeinfo_and_connection_detection, 
 
     BOOST_TEST_MESSAGE("Call AddNode() for all the peers");
     for (auto node : connman->TestNodes()) {
-        BOOST_CHECK(connman->AddNode({/*m_added_node=*/node->addr.ToStringAddrPort(), /*m_use_v2transport=*/true}));
+        BOOST_CHECK(connman->AddNode({/*m_added_node=*/node->addr.ToStringAddrPort(), /*m_use_v2transport=*/true, /*proxy_override=*/{}}));
         BOOST_TEST_MESSAGE(strprintf("peer id=%s addr=%s", node->GetId(), node->addr.ToStringAddrPort()));
     }
 
     BOOST_TEST_MESSAGE("\nCall AddNode() with 2 addrs resolving to existing localhost addnode entry; neither should be added");
-    BOOST_CHECK(!connman->AddNode({/*m_added_node=*/"127.0.0.1", /*m_use_v2transport=*/true}));
+    BOOST_CHECK(!connman->AddNode({/*m_added_node=*/"127.0.0.1", /*m_use_v2transport=*/true, /*proxy_override=*/{}}));
     // OpenBSD doesn't support the IPv4 shorthand notation with omitted zero-bytes.
 #if !defined(__OpenBSD__)
-    BOOST_CHECK(!connman->AddNode({/*m_added_node=*/"127.1", /*m_use_v2transport=*/true}));
+    BOOST_CHECK(!connman->AddNode({/*m_added_node=*/"127.1", /*m_use_v2transport=*/true, /*proxy_override=*/{}}));
 #endif
 
     BOOST_TEST_MESSAGE("\nExpect GetAddedNodeInfo to return expected number of peers with `include_connected` true/false");

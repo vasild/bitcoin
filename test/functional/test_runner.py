@@ -377,6 +377,7 @@ BASE_SCRIPTS = [
     'rpc_gettxspendingprevout.py',
     'rpc_help.py',
     'feature_framework_testshell.py',
+    'retry_v1_override_proxy.py',
     'tool_rpcauth.py',
     'p2p_handshake.py',
     'p2p_handshake.py --v2transport',

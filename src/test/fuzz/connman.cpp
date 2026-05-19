@@ -123,7 +123,7 @@ FUZZ_TARGET(connman, .init = initialize_connman)
                 random_string = fuzzed_data_provider.ConsumeRandomLengthString(64);
             },
             [&] {
-                connman.AddNode({random_string, fuzzed_data_provider.ConsumeBool()});
+                connman.AddNode({random_string, fuzzed_data_provider.ConsumeBool(), {}});
             },
             [&] {
                 connman.CheckIncomingNonce(fuzzed_data_provider.ConsumeIntegral<uint64_t>());

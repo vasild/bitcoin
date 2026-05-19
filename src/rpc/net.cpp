@@ -330,6 +330,7 @@ static RPCMethod addnode()
                     {"node", RPCArg::Type::STR, RPCArg::Optional::NO, "The IP address/hostname optionally followed by :port of the peer to connect to"},
                     {"command", RPCArg::Type::STR, RPCArg::Optional::NO, "'add' to add a node to the list, 'remove' to remove a node from the list, 'onetry' to try a connection to the node once"},
                     {"v2transport", RPCArg::Type::BOOL, RPCArg::DefaultHint{"set by -v2transport"}, "Attempt to connect using BIP324 v2 transport protocol (ignored for 'remove' command)"},
+                    {"proxy_override", RPCArg::Type::STR, RPCArg::DefaultHint{"not set"}, "Override global proxy configuration and use the given proxy to connect to this peer"},
                 },
                 RPCResult{RPCResult::Type::NONE, "", ""},
                 RPCExamples{
@@ -351,20 +352,36 @@ static RPCMethod addnode()
     bool node_v2transport = connman.GetLocalServices() & NODE_P2P_V2;
     bool use_v2transport = self.MaybeArg<bool>("v2transport").value_or(node_v2transport);
 
+    std::optional<Proxy> proxy_override;
+    const auto proxy_arg{self.MaybeArg<std::string_view>("proxy_override")};
+    if (proxy_arg.has_value()) {
+        const auto proxy_cservice{Lookup(std::string{proxy_arg.value()}, /*portDefault=*/0, /*fAllowLookup=*/true)};
+        if (proxy_cservice.has_value() && proxy_cservice.value().IsValid() && proxy_cservice.value().GetPort() != 0) {
+            proxy_override.emplace(proxy_cservice.value());
+        } else {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Cannot parse proxy_override: %s", proxy_arg.value()));
+        }
+    }
+
     if (use_v2transport && !node_v2transport) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Error: v2transport requested but not enabled (see -v2transport)");
     }
 
     if (command == "onetry")
     {
-        CAddress addr;
-        connman.OpenNetworkConnection(addr, /*fCountFailure=*/false, /*grant_outbound=*/{}, std::string{node_arg}.c_str(), ConnectionType::MANUAL, use_v2transport);
+        connman.OpenNetworkConnection(/*addrConnect=*/CAddress{},
+                                      /*fCountFailure=*/false,
+                                      /*grant_outbound=*/{},
+                                      /*pszDest=*/std::string{node_arg}.c_str(),
+                                      /*conn_type=*/ConnectionType::MANUAL,
+                                      /*use_v2transport=*/use_v2transport,
+                                      /*proxy_override=*/proxy_override);
         return UniValue::VNULL;
     }
 
     if (command == "add")
     {
-        if (!connman.AddNode({std::string{node_arg}, use_v2transport})) {
+        if (!connman.AddNode({std::string{node_arg}, use_v2transport, proxy_override})) {
             throw JSONRPCError(RPC_CLIENT_NODE_ALREADY_ADDED, "Error: Node already added");
         }
     }

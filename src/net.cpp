@@ -3019,7 +3019,13 @@ void CConnman::ThreadOpenAddedConnections()
             }
             tried = true;
             CAddress addr(CService(), NODE_NONE);
-            OpenNetworkConnection(addr, false, std::move(grant), info.m_params.m_added_node.c_str(), ConnectionType::MANUAL, info.m_params.m_use_v2transport);
+            OpenNetworkConnection(/*addrConnect=*/addr,
+                                  /*fCountFailure=*/false,
+                                  /*grant_outbound=*/std::move(grant),
+                                  /*pszDest=*/info.m_params.m_added_node.c_str(),
+                                  /*conn_type=*/ConnectionType::MANUAL,
+                                  /*use_v2transport=*/info.m_params.m_use_v2transport,
+                                  /*proxy_override=*/info.m_params.proxy_override);
             if (!m_interrupt_net->sleep_for(500ms)) return;
             grant = CountingSemaphoreGrant<>(*semAddnode, /*fTry=*/true);
         }
