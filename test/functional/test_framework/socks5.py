@@ -216,7 +216,14 @@ class Socks5Connection():
                 else:
                     logger.debug(f"Can't serve the connection to {requested_to}: no destinations factory")
 
-            # Fall through to disconnect
+            # Disconnect happens in the "finally" block below.
+
+        except (BrokenPipeError, ConnectionResetError) as e:
+            client_addr, client_port = self.conn.getpeername()
+            proxy_addr, proxy_port = self.conn.getsockname()
+            logger.debug("Socks5Connection.handle("
+                         f"client={format_addr_port(client_addr, client_port)}, "
+                         f"proxy={format_addr_port(proxy_addr, proxy_port)}): abnormal connection close: {str(e)}")
         except Exception as e:
             logger.exception(f"socks5 request handling failed (running {self.serv.is_running()})")
             if self.serv.is_running():
