@@ -60,27 +60,40 @@ def forward_sockets(a, b, wakeup_socket, serv):
     # received on `b` and forwarded to `a`. And at the same time the application
     # at `a` is not sending anything because it waits for the data from `b` to
     # respond.
+    a_local_addr, a_local_port = a.getsockname()
+    a_remote_addr, a_remote_port = a.getpeername()
+    b_local_addr, b_local_port = b.getsockname()
+    b_remote_addr, b_remote_port = b.getpeername()
+    # Prefix messages with e.g.:
+    # forward_sockets(a{remote=127.0.0.1:36935, local=127.0.0.1:9050} <-> b{local=127.0.0.1:33424, remote=127.0.0.1:8333})
+    log_prefix = ("forward_sockets("
+        f"a{{remote={format_addr_port(a_remote_addr, a_remote_port)}, "
+           f"local={format_addr_port(a_local_addr, a_local_port)}}} <-> "
+        f"b{{local={format_addr_port(b_local_addr, b_local_port)}, "
+           f"remote={format_addr_port(b_remote_addr, b_remote_port)}}}): ")
     a.setblocking(False)
     b.setblocking(False)
     sockets = [a, b, wakeup_socket]
-    done = False
-    while not done:
+    while True:
         # Blocking select with timeout
         rlist, _, xlist = select.select(sockets, [], sockets, 2)
         if not serv.is_running():
-            logger.debug("forward_sockets: Exit due to shutdown")
+            logger.debug(f"{log_prefix}Exit due to shutdown")
             return
         if len(xlist) > 0:
-            raise IOError('Exceptional condition on socket')
+            raise IOError(f"{log_prefix}Exceptional condition on socket")
         for s in rlist:
-            data = s.recv(4096)
-            if data is None or len(data) == 0:
-                done = True
-                break
-            if s == a:
-                sendall(b, data)
-            elif s == b:
-                sendall(a, data)
+            try:
+                data = s.recv(4096)
+                if data is None or len(data) == 0:
+                    return
+                if s == a:
+                    sendall(b, data)
+                elif s == b:
+                    sendall(a, data)
+            except (BrokenPipeError, ConnectionResetError) as e:
+                logger.debug(f"{log_prefix}cannot send or receive data on socket {'a' if s == a else 'b'}: {str(e)}")
+                return
 
 # Implementation classes
 class Socks5Configuration():
